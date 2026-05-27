@@ -27,7 +27,6 @@ import {
   CheckCircle2,
   ArrowLeft,
   User,
-  Upload,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -790,7 +789,124 @@ function CategoryChip({ label }: { label: string }) {
 
 function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
   const [step, setStep] = useState(1);
-  const steps = ["Empresa", "Produtos", "Perfil", "Responsável"];
+  const [formData, setFormData] = useState({
+    razaoSocial: "",
+    nome_fantasia: "",
+    cnpj: "",
+    email: "",
+    telefone: "",
+    senha: "",
+    descricao: "",
+    tempo_mercado: "",
+    website: "",
+  });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const steps = ["Empresa", "Contato", "Perfil"];
+  const inputClass =
+    "w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white";
+
+  const updateField = (field: keyof typeof formData, value: string) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+    if (error) setError("");
+  };
+
+  const isValidUrl = (value: string) => {
+    if (!value.trim()) return true;
+
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const validateStep = (targetStep = step) => {
+    if (targetStep === 1) {
+      if (!formData.razaoSocial.trim() || !formData.nome_fantasia.trim() || !formData.cnpj.trim()) {
+        setError("Preencha razão social, nome fantasia e CNPJ para continuar.");
+        return false;
+      }
+    }
+
+    if (targetStep === 2) {
+      if (!formData.email.trim() || !formData.telefone.trim() || !formData.senha.trim()) {
+        setError("Preencha e-mail, telefone e senha para continuar.");
+        return false;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        setError("Informe um e-mail válido.");
+        return false;
+      }
+
+      if (formData.senha.length < 6) {
+        setError("A senha deve ter pelo menos 6 caracteres.");
+        return false;
+      }
+    }
+
+    if (targetStep === 3) {
+      if (!formData.descricao.trim() || !formData.tempo_mercado.trim()) {
+        setError("Preencha a descrição e o tempo de mercado para criar o perfil.");
+        return false;
+      }
+
+      if (!isValidUrl(formData.website)) {
+        setError("Informe um site válido, incluindo http:// ou https://.");
+        return false;
+      }
+    }
+
+    setError("");
+    return true;
+  };
+
+  const goToStep = (nextStep: number) => {
+    if (nextStep > step && !validateStep(step)) return;
+    setStep(nextStep);
+  };
+
+  const handleSubmit = async () => {
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) return;
+
+    setIsSubmitting(true);
+    setError("");
+
+    const payload = {
+      razaoSocial: formData.razaoSocial.trim(),
+      nome_fantasia: formData.nome_fantasia.trim(),
+      cnpj: formData.cnpj.trim(),
+      email: formData.email.trim(),
+      telefone: formData.telefone.trim(),
+      senha: formData.senha,
+      descricao: formData.descricao.trim(),
+      tempo_mercado: formData.tempo_mercado.trim(),
+      website: formData.website.trim(),
+    };
+
+    try {
+      const response = await fetch("/api/fornecedores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(data?.erro || "Não foi possível cadastrar o fornecedor.");
+        return;
+      }
+
+      setScreen("busca");
+    } catch {
+      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-[calc(100vh-56px)] flex">
@@ -853,9 +969,8 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
 
           <h1 className="text-2xl font-bold text-foreground mb-1">
             {step === 1 && "Dados da empresa"}
-            {step === 2 && "Produtos e serviços"}
+            {step === 2 && "Contato e acesso"}
             {step === 3 && "Perfil público"}
-            {step === 4 && "Responsável e acesso"}
           </h1>
           <p className="text-sm text-muted-foreground mb-7">
             Já tem conta?{" "}
@@ -864,109 +979,81 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
             </button>
           </p>
 
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           {step === 1 && (
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium text-foreground block mb-1.5">Razão social *</label>
-                <input placeholder="Nome completo da empresa" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
-                  <input placeholder="00.000.000/0001-00" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Ano de fundação</label>
-                  <input placeholder="Ex: 2010" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
+                <input
+                  value={formData.razaoSocial}
+                  onChange={(event) => updateField("razaoSocial", event.target.value)}
+                  placeholder="Tech Solutions Industria e Comercio LTDA"
+                  className={inputClass}
+                />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Número de funcionários</label>
-                <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                  <option>1–10</option>
-                  <option>11–50</option>
-                  <option>51–200</option>
-                  <option>201–500</option>
-                  <option>500+</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Estado *</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">UF</option>
-                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
-                      <option key={uf}>{uf}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Cidade *</label>
-                  <input placeholder="Sua cidade" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Nome fantasia *</label>
+                <input
+                  value={formData.nome_fantasia}
+                  onChange={(event) => updateField("nome_fantasia", event.target.value)}
+                  placeholder="Tech Solutions"
+                  className={inputClass}
+                />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Regiões de atendimento</label>
-                <div className="flex flex-wrap gap-2">
-                  {["Sul", "Sudeste", "Centro-Oeste", "Nordeste", "Norte", "Nacional"].map((r) => (
-                    <CategoryChip key={r} label={r} />
-                  ))}
-                </div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
+                <input
+                  value={formData.cnpj}
+                  onChange={(event) => updateField("cnpj", event.target.value)}
+                  placeholder="12.345.678/0001-90"
+                  className={inputClass}
+                />
               </div>
-              <button onClick={() => setStep(2)} className="w-full bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
+              <button onClick={() => goToStep(2)} className="w-full bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
                 Continuar
               </button>
             </div>
           )}
 
           {step === 2 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Categorias de produto / serviço *</label>
-                <div className="flex flex-wrap gap-2">
-                  {["Embalagens", "Metalurgia", "Polímeros", "Fixadores", "Logística", "Matéria-Prima", "Equipamentos", "Serviços Industriais", "Químicos", "Têxtil"].map((cat) => (
-                    <CategoryChip key={cat} label={cat} />
-                  ))}
-                </div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">E-mail *</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                  placeholder="contato@techsolutions.com.br"
+                  className={inputClass}
+                />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Prazo médio de entrega</label>
-                <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                  <option>Até 3 dias úteis</option>
-                  <option>4–7 dias úteis</option>
-                  <option>8–15 dias úteis</option>
-                  <option>15–30 dias</option>
-                  <option>Sob consulta</option>
-                </select>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Telefone *</label>
+                <input
+                  value={formData.telefone}
+                  onChange={(event) => updateField("telefone", event.target.value)}
+                  placeholder="(47) 99999-9999"
+                  className={inputClass}
+                />
               </div>
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Faixa de preço</label>
-                <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                  <option>Econômico</option>
-                  <option>Intermediário</option>
-                  <option>Premium</option>
-                  <option>Sob consulta</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">Certificações</label>
-                <div className="flex flex-wrap gap-2">
-                  {["ISO 9001", "ISO 14001", "ISO 45001", "FSC", "ABNT", "INMETRO", "ESG", "SA8000"].map((c) => (
-                    <CategoryChip key={c} label={c} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Práticas ESG</label>
-                <div className="flex flex-wrap gap-2">
-                  {["Emissão zero", "Materiais recicláveis", "Energia renovável", "Inclusão social", "Gestão de resíduos"].map((e) => (
-                    <CategoryChip key={e} label={e} />
-                  ))}
-                </div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
+                <input
+                  type="password"
+                  value={formData.senha}
+                  onChange={(event) => updateField("senha", event.target.value)}
+                  placeholder="Mín. 6 caracteres"
+                  className={inputClass}
+                />
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
-                <button onClick={() => setStep(3)} className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">Continuar</button>
+                <button onClick={() => goToStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button onClick={() => goToStep(3)} className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">Continuar</button>
               </div>
             </div>
           )}
@@ -974,86 +1061,41 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Logo da empresa</label>
-                <div className="border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/40 transition-colors cursor-pointer">
-                  <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Arraste ou clique para enviar</p>
-                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG até 2MB</p>
-                </div>
-              </div>
-              <div>
                 <label className="text-sm font-medium text-foreground block mb-1.5">Descrição da empresa *</label>
                 <textarea
-                  placeholder="Descreva o que sua empresa faz, seus diferenciais, capacidade produtiva e principais clientes..."
+                  value={formData.descricao}
+                  onChange={(event) => updateField("descricao", event.target.value)}
+                  placeholder="Fornecedor especializado em soluções tecnológicas para pequenas e médias empresas."
                   rows={4}
                   className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white resize-none"
                 />
               </div>
               <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Tempo de mercado *</label>
+                <input
+                  value={formData.tempo_mercado}
+                  onChange={(event) => updateField("tempo_mercado", event.target.value)}
+                  placeholder="5 anos"
+                  className={inputClass}
+                />
+              </div>
+              <div>
                 <label className="text-sm font-medium text-foreground block mb-1.5">Site da empresa</label>
-                <input placeholder="https://www.suaempresa.com.br" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Telefone</label>
-                  <input placeholder="(00) 00000-0000" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">WhatsApp</label>
-                  <input placeholder="(00) 00000-0000" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
+                <input
+                  value={formData.website}
+                  onChange={(event) => updateField("website", event.target.value)}
+                  placeholder="https://www.techsolutions.com.br"
+                  className={inputClass}
+                />
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
-                <button onClick={() => setStep(4)} className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">Continuar</button>
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Nome *</label>
-                  <input placeholder="Seu nome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Sobrenome *</label>
-                  <input placeholder="Seu sobrenome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Cargo</label>
-                <input placeholder="Ex: Diretor Comercial" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">E-mail *</label>
-                <input type="email" placeholder="seu@empresa.com.br" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
-                  <input type="password" placeholder="Mín. 8 caracteres" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Confirmar senha *</label>
-                  <input type="password" placeholder="Repita a senha" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 p-3 bg-green-50 border border-green-100 rounded-xl">
-                <input type="checkbox" id="terms-f" className="mt-0.5 accent-teal-600" />
-                <label htmlFor="terms-f" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
-                  Concordo com os <span className="text-teal-700 font-semibold">Termos de Uso</span> e a{" "}
-                  <span className="text-teal-700 font-semibold">Política de Privacidade</span> da SupplyNet.
-                </label>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setStep(3)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button onClick={() => goToStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
                 <button
-                  onClick={() => setScreen("busca")}
-                  className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="flex-1 bg-[#0F6E56] hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm"
                 >
-                  Criar perfil gratuito
+                  {isSubmitting ? "Criando..." : "Criar perfil gratuito"}
                 </button>
               </div>
             </div>

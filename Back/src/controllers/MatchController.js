@@ -47,7 +47,7 @@ exports.buscarFornecedores = async (req, res) => {
 exports.cadastrarFornecedor = async (req, res) => {
     try {
         // Pegando os dados baseados no seu novo modelo de Entidade-Relacionamento
-        const { razaoSocial, nome_fantasia, cnpj, email, telefone, descricao, website } = req.body;
+        const { razaoSocial, nome_fantasia, cnpj, email, telefone, senha, descricao, tempo_mercado, website } = req.body;
 
         if (!razaoSocial || !cnpj) {
             return res.status(400).json({ 
@@ -63,7 +63,9 @@ exports.cadastrarFornecedor = async (req, res) => {
             cnpj,
             email,
             telefone,
+            senha,
             descricao,
+            tempo_mercado,
             website,
             avaliacao: 0 // Inicia com nota 0
         });
