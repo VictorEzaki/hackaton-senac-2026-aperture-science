@@ -6,6 +6,7 @@ const { autenticar } = require('../middlewares/AuthMiddleware');
 router.get('/match', MatchController.buscarFornecedores);
 
 router.get('/fornecedores/opcoes', MatchController.listarOpcoesFornecedor);
+router.get('/fornecedores/catalogo', MatchController.buscarCatalogoFornecedores);
 router.post('/fornecedores', MatchController.cadastrarFornecedor);
 router.post('/fornecedores/login', MatchController.loginFornecedor);
 router.get('/fornecedores/:idFornecedor/avaliacoes', MatchController.listarAvaliacoesFornecedor);

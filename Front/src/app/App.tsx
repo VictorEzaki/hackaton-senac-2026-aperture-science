@@ -27,6 +27,12 @@ import {
   ArrowLeft,
   User,
 } from "lucide-react";
+import {
+  buildSupplierCatalogParams,
+  fetchSupplierCatalog,
+  fetchSupplierOptions,
+  type SupplierCatalogItem,
+} from "./services/supplierCatalog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +47,7 @@ type Screen =
 interface Supplier {
   id: string;
   name: string;
+  razaoSocial?: string;
   initials: string;
   category: string;
   subcategory: string;
@@ -59,6 +66,9 @@ interface Supplier {
   founded: string;
   certifications: string[];
   color: string;
+  website?: string;
+  telefone?: string;
+  email?: string;
 }
 
 interface SupplierFromApi {
@@ -70,9 +80,17 @@ interface SupplierFromApi {
   descricao?: string;
   tempo_mercado?: string;
   website?: string;
+  categoria?: string;
+  qualificacao?: string;
+  tipoProduto?: string;
+  cidade?: string;
+  estado?: string;
   avaliacao?: number;
   data_cadastro?: string;
   Categoria?: {
+    categoria?: string;
+  };
+  Categorium?: {
     categoria?: string;
   };
   Certificaco?: {
@@ -142,11 +160,18 @@ const getInitials = (name: string) =>
 
 const mapSupplierFromApi = (supplier: SupplierFromApi, index: number): Supplier => {
   const name = supplier.nome_fantasia || supplier.razaoSocial || "Fornecedor";
-  const category = supplier.Categoria?.categoria || "Sem categoria";
-  const certification = supplier.Certificacoes?.certificacao || supplier.Certificaco?.certificacao || "";
-  const attendance = supplier.CapacidadeAtendimento?.atendimento || "Atendimento não informado";
-  const city = supplier.Endereco?.Bairro?.Cidade?.cidade || "Cidade não informada";
-  const state = supplier.Endereco?.Bairro?.Cidade?.Estado?.estado || "UF";
+  const category = supplier.categoria || supplier.Categoria?.categoria || supplier.Categorium?.categoria || "Sem categoria";
+  const certification =
+    supplier.qualificacao ||
+    supplier.Certificacoes?.certificacao ||
+    supplier.Certificaco?.certificacao ||
+    "";
+  const attendance =
+    supplier.tipoProduto ||
+    supplier.CapacidadeAtendimento?.atendimento ||
+    "Tipo não informado";
+  const city = supplier.cidade || supplier.Endereco?.Bairro?.Cidade?.cidade || "Cidade não informada";
+  const state = supplier.estado || supplier.Endereco?.Bairro?.Cidade?.Estado?.estado || "UF";
   const rating = Number(supplier.avaliacao || 0);
   const founded = supplier.data_cadastro
     ? String(new Date(supplier.data_cadastro).getFullYear())
@@ -157,9 +182,10 @@ const mapSupplierFromApi = (supplier: SupplierFromApi, index: number): Supplier 
   return {
     id: String(supplier.idFornecedor),
     name,
+    razaoSocial: supplier.razaoSocial,
     initials: getInitials(name),
     category,
-    subcategory: category,
+    subcategory: attendance || category,
     location: city,
     state,
     rating,
@@ -175,6 +201,9 @@ const mapSupplierFromApi = (supplier: SupplierFromApi, index: number): Supplier 
     founded,
     certifications: certification ? [certification] : [],
     color: supplierColors[index % supplierColors.length],
+    website: supplier.website,
+    telefone: supplier.telefone,
+    email: supplier.email,
   };
 };
 
@@ -361,6 +390,13 @@ function Nav({
   setScreen: (s: Screen) => void;
 }) {
   const [cadastroOpen, setCadastroOpen] = useState(false);
+  const goToScreen = (nextScreen: Screen) => {
+    if (nextScreen === "busca" && typeof window !== "undefined") {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
+    setScreen(nextScreen);
+  };
 
   const navItems: { id: Screen; label: string }[] = [
     { id: "busca", label: "Buscar" },
@@ -374,7 +410,7 @@ function Nav({
       <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
         {/* Logo */}
         <button
-          onClick={() => setScreen("busca")}
+          onClick={() => goToScreen("busca")}
           className="flex items-center gap-2 flex-shrink-0"
         >
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
@@ -393,7 +429,7 @@ function Nav({
               return (
                 <button
                   key={item.id}
-                  onClick={() => setScreen(item.id)}
+                  onClick={() => goToScreen(item.id)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                     active
                       ? "bg-secondary text-primary"
@@ -411,7 +447,7 @@ function Nav({
         <div className="flex items-center gap-2">
           {isAuthScreen ? (
             <button
-              onClick={() => setScreen("busca")}
+              onClick={() => goToScreen("busca")}
               className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-4 h-4" /> Voltar
@@ -1724,14 +1760,9 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
 
 // ─── Screen: Busca Inteligente ────────────────────────────────────────────────
 
-function BuscaScreen({
-  setScreen,
-  setQuery,
-}: {
-  setScreen: (s: Screen) => void;
-  setQuery: (q: string) => void;
-}) {
+function BuscaScreen() {
   const [input, setInput] = useState("");
+  const [submittedSearch, setSubmittedSearch] = useState("");
   const suggestions = [
     "Embalagens sustentáveis em Santa Catarina",
     "Fornecedor de fixadores com entrega rápida",
@@ -1741,8 +1772,7 @@ function BuscaScreen({
   ];
 
   const handleSearch = (q: string) => {
-    setQuery(q);
-    setScreen("resultados");
+    setSubmittedSearch(q);
   };
 
   return (
@@ -1806,6 +1836,14 @@ function BuscaScreen({
               </button>
             ))}
           </div>
+          {submittedSearch && (
+            <div className="mt-5 bg-secondary border border-blue-100 rounded-xl px-4 py-3 text-left">
+              <p className="text-sm font-semibold text-foreground">Busca inteligente registrada</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                "{submittedSearch}" será usada como briefing da sua demanda. Para explorar fornecedores cadastrados com filtros, acesse o Catálogo.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1859,43 +1897,52 @@ function BuscaScreen({
 // ─── Screen: Resultados / Catálogo ────────────────────────────────────────────
 
 function ResultadosScreen({
-  query,
-  setQuery,
   setActiveSupplier,
   setScreen,
 }: {
-  query: string;
-  setQuery: (q: string) => void;
   setActiveSupplier: (supplier: Supplier) => void;
   setScreen: (s: Screen) => void;
 }) {
-  const [localQuery, setLocalQuery] = useState(query);
-  const [activeFilter, setActiveFilter] = useState("Todos");
-  const [sortBy, setSortBy] = useState("match");
-  const [onlyVerified, setOnlyVerified] = useState(false);
-  const [onlyESG, setOnlyESG] = useState(false);
+  const readInitialFilters = () => {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+
+    return {
+      search: params?.get("search") || "",
+      categoria: params?.get("categoria") || "",
+      qualificacao: params?.get("qualificacao") || "",
+      tipoProduto: params?.get("tipoProduto") || "",
+      avaliacaoMinima: params?.get("avaliacaoMinima") || "",
+      estado: params?.get("estado") || "",
+      cidade: params?.get("cidade") || "",
+      sort: params?.get("sort") || "relevancia",
+      page: Math.max(1, Number(params?.get("page") || 1) || 1),
+      limit: 10,
+    };
+  };
+
+  const [filters, setFilters] = useState(readInitialFilters);
+  const [localQuery, setLocalQuery] = useState(filters.search);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 0 });
+  const [filterOptions, setFilterOptions] = useState({
+    categorias: DEFAULT_SUPPLIER_OPTIONS.categorias,
+    certificacoes: DEFAULT_SUPPLIER_OPTIONS.certificacoes,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadSuppliers = async () => {
+  const loadSuppliers = async (nextFilters = filters) => {
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetch("/api/match");
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setError(data?.erro || "Não foi possível carregar os fornecedores.");
-        setSuppliers([]);
-        return;
-      }
-
-      const apiSuppliers = Array.isArray(data?.ranking) ? data.ranking : [];
-      setSuppliers(apiSuppliers.map(mapSupplierFromApi));
-    } catch {
-      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+      const data = await fetchSupplierCatalog(nextFilters);
+      setSuppliers((data.data || []).map((supplier: SupplierCatalogItem, index: number) =>
+        mapSupplierFromApi(supplier, index)
+      ));
+      setPagination(data.pagination || { page: nextFilters.page, limit: nextFilters.limit, total: 0, totalPages: 0 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível conectar com a API. Tente novamente em instantes.");
       setSuppliers([]);
     } finally {
       setIsLoading(false);
@@ -1903,25 +1950,38 @@ function ResultadosScreen({
   };
 
   useEffect(() => {
-    loadSuppliers();
+    fetchSupplierOptions()
+      .then((data) => {
+        setFilterOptions({
+          categorias: data.categorias?.length ? data.categorias : DEFAULT_SUPPLIER_OPTIONS.categorias,
+          certificacoes: data.certificacoes?.length ? data.certificacoes : DEFAULT_SUPPLIER_OPTIONS.certificacoes,
+        });
+      })
+      .catch(() => {
+        setFilterOptions({
+          categorias: DEFAULT_SUPPLIER_OPTIONS.categorias,
+          certificacoes: DEFAULT_SUPPLIER_OPTIONS.certificacoes,
+        });
+      });
   }, []);
 
   useEffect(() => {
-    setLocalQuery(query);
-  }, [query]);
+    const params = buildSupplierCatalogParams(filters);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    }
 
-  const filters = [
-    "Todos",
-    ...Array.from(new Set(suppliers.map((supplier) => supplier.category).filter(Boolean))).sort(),
-  ];
+    const timeout = window.setTimeout(() => loadSuppliers(filters), 300);
+    return () => window.clearTimeout(timeout);
+  }, [filters]);
 
-  const sorted = [...suppliers]
-    .filter((s) => !onlyVerified || s.verified)
-    .filter((s) => !onlyESG || s.esg)
-    .filter((s) => activeFilter === "Todos" || s.category === activeFilter)
-    .sort((a, b) =>
-      sortBy === "match" ? b.matchScore - a.matchScore : b.rating - a.rating
-    );
+  const updateFilter = (key: keyof typeof filters, value: string | number) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: key === "page" ? Number(value) : 1,
+    }));
+  };
 
   const openPerfil = (supplier: Supplier) => {
     setActiveSupplier(supplier);
@@ -1929,13 +1989,28 @@ function ResultadosScreen({
   };
 
   const handleRefineSearch = () => {
-    setQuery(localQuery);
-    loadSuppliers();
+    updateFilter("search", localQuery);
+  };
+
+  const clearFilters = () => {
+    setLocalQuery("");
+    setFilters({
+      search: "",
+      categoria: "",
+      qualificacao: "",
+      tipoProduto: "",
+      avaliacaoMinima: "",
+      estado: "",
+      cidade: "",
+      sort: "relevancia",
+      page: 1,
+      limit: 10,
+    });
   };
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-8">
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="flex-1 flex items-center gap-3 bg-white border border-border rounded-xl px-4 py-3 focus-within:border-primary transition-colors">
           <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <input
@@ -1943,11 +2018,14 @@ function ResultadosScreen({
             onChange={(e) => setLocalQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleRefineSearch()}
             className="flex-1 border-0 outline-none text-sm text-foreground bg-transparent"
-            placeholder="Refine sua busca..."
+            placeholder="Busque por fornecedores, produtos, certificações ou localização..."
           />
           {localQuery && (
             <button
-              onClick={() => setLocalQuery("")}
+              onClick={() => {
+                setLocalQuery("");
+                updateFilter("search", "");
+              }}
               className="text-muted-foreground hover:text-foreground"
             >
               <X className="w-4 h-4" />
@@ -1962,64 +2040,102 @@ function ResultadosScreen({
         </button>
       </div>
 
-      {query && (
+      {filters.search && (
         <div className="mb-6 p-4 bg-secondary border border-blue-100 rounded-xl flex items-start gap-3">
           <Zap className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-sm font-semibold text-foreground mb-0.5">
-              Busca analisada pela IA
+              Busca aplicada ao catálogo
             </p>
             <p className="text-sm text-muted-foreground">
-              "{query}" — exibindo {isLoading ? "..." : sorted.length} fornecedores cadastrados,
-              ranqueados por localização, reputação, sustentabilidade e prazo.
+              "{filters.search}" - {isLoading ? "consultando fornecedores..." : `${pagination.total} resultado(s) compatíveis encontrados.`}
             </p>
           </div>
         </div>
       )}
 
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar */}
-        <aside className="hidden lg:block w-56 flex-shrink-0">
+        <aside className="lg:w-72 flex-shrink-0">
           <div className="bg-white border border-border rounded-xl p-4 sticky top-20">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Categoria
-            </p>
-            <div className="space-y-1 mb-5">
-              {filters.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setActiveFilter(f)}
-                  className={`w-full text-left text-sm px-2.5 py-1.5 rounded-lg transition-colors ${
-                    activeFilter === f
-                      ? "bg-secondary text-primary font-semibold"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-            </div>
-            <div className="border-t border-border pt-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Qualificação
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Filtros
               </p>
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={onlyVerified}
-                  onChange={(e) => setOnlyVerified(e.target.checked)}
-                  className="w-4 h-4 accent-primary"
-                />
-                <span className="text-sm text-foreground">Somente verificados</span>
+              <button
+                onClick={clearFilters}
+                className="text-xs font-semibold text-primary hover:text-primary/80"
+              >
+                Limpar
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-1 gap-3">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Categoria</span>
+                <select
+                  value={filters.categoria}
+                  onChange={(e) => updateFilter("categoria", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                >
+                  <option value="">Todas</option>
+                  {filterOptions.categorias.map((categoria) => (
+                    <option key={categoria} value={categoria}>{categoria}</option>
+                  ))}
+                </select>
               </label>
-              <label className="flex items-center gap-2.5 cursor-pointer">
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Qualificação</span>
+                <select
+                  value={filters.qualificacao}
+                  onChange={(e) => updateFilter("qualificacao", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                >
+                  <option value="">Todas</option>
+                  {filterOptions.certificacoes.map((certificacao) => (
+                    <option key={certificacao} value={certificacao}>{certificacao}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Tipo de produto ou serviço</span>
                 <input
-                  type="checkbox"
-                  checked={onlyESG}
-                  onChange={(e) => setOnlyESG(e.target.checked)}
-                  className="w-4 h-4 accent-primary"
+                  value={filters.tipoProduto}
+                  onChange={(e) => updateFilter("tipoProduto", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                  placeholder="Ex.: sustentáveis"
                 />
-                <span className="text-sm text-foreground">Práticas ESG</span>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Avaliação mínima</span>
+                <select
+                  value={filters.avaliacaoMinima}
+                  onChange={(e) => updateFilter("avaliacaoMinima", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                >
+                  <option value="">Qualquer avaliação</option>
+                  <option value="5">5 estrelas</option>
+                  <option value="4">4+ estrelas</option>
+                  <option value="3">3+ estrelas</option>
+                  <option value="2">2+ estrelas</option>
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Estado</span>
+                <input
+                  value={filters.estado}
+                  onChange={(e) => updateFilter("estado", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                  placeholder="Ex.: São Paulo"
+                />
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Cidade</span>
+                <input
+                  value={filters.cidade}
+                  onChange={(e) => updateFilter("cidade", e.target.value)}
+                  className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-white outline-none focus:border-primary"
+                  placeholder="Ex.: Campinas"
+                />
               </label>
             </div>
           </div>
@@ -2029,17 +2145,19 @@ function ResultadosScreen({
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted-foreground">
-              {isLoading ? "Carregando fornecedores..." : `${sorted.length} fornecedores encontrados`}
+              {isLoading ? "Carregando fornecedores..." : `${pagination.total} fornecedores encontrados`}
             </p>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Ordenar por</span>
               <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                value={filters.sort}
+                onChange={(e) => updateFilter("sort", e.target.value)}
                 className="text-sm border border-border rounded-lg px-2 py-1 bg-white outline-none"
               >
-                <option value="match">Melhor match</option>
-                <option value="rating">Avaliação</option>
+                <option value="relevancia">Relevância</option>
+                <option value="avaliacao">Maior avaliação</option>
+                <option value="recentes">Mais recentes</option>
+                <option value="alfabetica">Ordem alfabética</option>
               </select>
             </div>
           </div>
@@ -2049,7 +2167,7 @@ function ResultadosScreen({
               <p className="font-semibold mb-2">Falha ao carregar fornecedores</p>
               <p className="mb-4">{error}</p>
               <button
-                onClick={loadSuppliers}
+                onClick={() => loadSuppliers(filters)}
                 className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
               >
                 Tentar novamente
@@ -2064,22 +2182,22 @@ function ResultadosScreen({
             </div>
           )}
 
-          {!isLoading && !error && sorted.length === 0 && (
+          {!isLoading && !error && suppliers.length === 0 && (
             <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
               <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Nenhum fornecedor cadastrado encontrado</p>
+              <p className="font-medium">Nenhum fornecedor encontrado</p>
               <p className="text-sm mt-1">
-                Cadastre um fornecedor ou ajuste os filtros para visualizar resultados.
+                Ajuste a busca ou remova algum filtro para ampliar os resultados.
               </p>
             </div>
           )}
 
-          {!isLoading && !error && sorted.length > 0 && (
+          {!isLoading && !error && suppliers.length > 0 && (
           <div className="space-y-3">
-            {sorted.map((supplier, idx) => (
+            {suppliers.map((supplier, idx) => (
               <div
                 key={supplier.id}
-                className="bg-white border border-border rounded-xl p-5 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
+                className="bg-white border border-border rounded-xl p-5 hover:border-primary/30 hover:shadow-sm transition-all"
                 onClick={() => openPerfil(supplier)}
               >
                 <div className="flex items-start gap-4">
@@ -2114,10 +2232,14 @@ function ResultadosScreen({
                       <button
                         onClick={(e) => e.stopPropagation()}
                         className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0"
+                        aria-label="Salvar fornecedor"
                       >
                         <Heart className="w-4 h-4" />
                       </button>
                     </div>
+                    {supplier.razaoSocial && (
+                      <p className="text-xs text-muted-foreground mb-2">{supplier.razaoSocial}</p>
+                    )}
                     <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Package className="w-3.5 h-3.5" />
@@ -2139,17 +2261,55 @@ function ResultadosScreen({
                       <div className="flex items-center gap-3">
                         <StarRating rating={supplier.rating} count={supplier.reviews} />
                         <span className="text-xs text-muted-foreground">
-                          {supplier.priceRange}
+                          {supplier.website || supplier.priceRange}
                         </span>
                       </div>
-                      <div className="w-48 flex-shrink-0">
-                        <MatchBar score={supplier.matchScore} />
+                      <div className="flex items-center gap-2">
+                        {(supplier.email || supplier.telefone) && (
+                          <a
+                            href={supplier.email ? `mailto:${supplier.email}` : `tel:${supplier.telefone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-3 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:border-primary/40 transition-colors"
+                          >
+                            Contato
+                          </a>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPerfil(supplier);
+                          }}
+                          className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
+                        >
+                          Ver perfil
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             ))}
+            {pagination.totalPages > 1 && (
+              <div className="flex items-center justify-between gap-3 pt-3">
+                <button
+                  onClick={() => updateFilter("page", Math.max(1, filters.page - 1))}
+                  disabled={filters.page <= 1}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:border-primary/40 transition-colors"
+                >
+                  Anterior
+                </button>
+                <span className="text-sm text-muted-foreground">
+                  Página {pagination.page} de {pagination.totalPages}
+                </span>
+                <button
+                  onClick={() => updateFilter("page", Math.min(pagination.totalPages, filters.page + 1))}
+                  disabled={filters.page >= pagination.totalPages}
+                  className="px-4 py-2 rounded-lg border border-border text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:border-primary/40 transition-colors"
+                >
+                  Próxima
+                </button>
+              </div>
+            )}
           </div>
           )}
         </div>
@@ -2610,18 +2770,15 @@ function PerfilScreen({
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("busca");
-  const [query, setQuery] = useState("");
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
 
   const renderScreen = () => {
     switch (screen) {
       case "busca":
-        return <BuscaScreen setScreen={setScreen} setQuery={setQuery} />;
+        return <BuscaScreen />;
       case "resultados":
         return (
           <ResultadosScreen
-            query={query}
-            setQuery={setQuery}
             setActiveSupplier={setActiveSupplier}
             setScreen={setScreen}
           />

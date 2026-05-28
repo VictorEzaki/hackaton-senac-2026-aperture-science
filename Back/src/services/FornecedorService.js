@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Op } = require('sequelize');
+const { Op, literal } = require('sequelize');
 const {
     sequelize,
     Estado,
@@ -35,6 +35,11 @@ const requiredAddressFields = ['estado', 'cidade', 'bairro', 'cep', 'logradouro'
 const normalizeText = (value) => String(value || '').trim();
 const normalizeEmail = (value) => normalizeText(value).toLowerCase();
 const onlyDigits = (value) => normalizeText(value).replace(/\D/g, '');
+const clampNumber = (value, min, max, fallback) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+};
 
 const publicFornecedor = (fornecedor) => {
     const data = fornecedor.toJSON ? fornecedor.toJSON() : fornecedor;
@@ -101,6 +106,193 @@ const listarOpcoes = async () => {
         categorias: categorias.map((item) => item.categoria),
         capacidades_atendimento: capacidadesAtendimento.map((item) => item.atendimento),
         certificacoes: certificacoes.map((item) => item.certificacao)
+    };
+};
+
+const fornecedorCatalogoAttributes = [
+    'idFornecedor',
+    'razaoSocial',
+    'nome_fantasia',
+    'descricao',
+    'website',
+    'avaliacao',
+    'data_cadastro',
+    'telefone',
+    'email'
+];
+
+const likeFilter = (value) => ({ [Op.like]: `%${value}%` });
+
+const buildCatalogoOrder = (sort, search) => {
+    if (sort === 'alfabetica') return [['nome_fantasia', 'ASC']];
+    if (sort === 'recentes') return [['data_cadastro', 'DESC']];
+    if (sort === 'avaliacao') return [['avaliacao', 'DESC'], ['nome_fantasia', 'ASC']];
+
+    if (search) {
+        const escapedSearch = sequelize.escape(`%${search}%`);
+        return [
+            [
+                literal(`CASE
+                    WHEN Fornecedor.nome_fantasia LIKE ${escapedSearch} THEN 1
+                    WHEN Fornecedor.razaoSocial LIKE ${escapedSearch} THEN 2
+                    WHEN Categorium.categoria LIKE ${escapedSearch} THEN 3
+                    WHEN Certificaco.certificacao LIKE ${escapedSearch} THEN 4
+                    ELSE 5
+                END`),
+                'ASC'
+            ],
+            ['avaliacao', 'DESC'],
+            ['nome_fantasia', 'ASC']
+        ];
+    }
+
+    return [['avaliacao', 'DESC'], ['nome_fantasia', 'ASC']];
+};
+
+const mapFornecedorCatalogo = (fornecedor) => {
+    const data = fornecedor.toJSON ? fornecedor.toJSON() : fornecedor;
+    const categoria = data.Categoria?.categoria || data.Categorium?.categoria || '';
+    const qualificacao = data.Certificaco?.certificacao || data.Certificacoes?.certificacao || '';
+    const cidade = data.Endereco?.Bairro?.Cidade?.cidade || '';
+    const estado = data.Endereco?.Bairro?.Cidade?.Estado?.estado || '';
+    const tipoProduto = normalizeText(data.descricao)
+        .replace(/^especialistas?\s+em\s+/i, '')
+        .replace(/^fabricacao\s+de\s+/i, '')
+        .replace(/^fabricação\s+de\s+/i, '')
+        .replace(/^desenvolvimento\s+de\s+/i, '')
+        .split(/[,.]/)[0]
+        .trim();
+
+    return {
+        idFornecedor: data.idFornecedor,
+        razaoSocial: data.razaoSocial,
+        nome_fantasia: data.nome_fantasia,
+        descricao: data.descricao,
+        categoria,
+        qualificacao,
+        tipoProduto: tipoProduto || categoria,
+        avaliacao: Number(data.avaliacao || 0),
+        cidade,
+        estado,
+        website: data.website,
+        telefone: data.telefone,
+        email: data.email,
+        data_cadastro: data.data_cadastro
+    };
+};
+
+const buscarCatalogo = async (params = {}) => {
+    const search = normalizeText(params.search);
+    const categoria = normalizeText(params.categoria);
+    const qualificacao = normalizeText(params.qualificacao);
+    const tipoProduto = normalizeText(params.tipoProduto);
+    const estado = normalizeText(params.estado);
+    const cidade = normalizeText(params.cidade);
+    const sortOptions = ['relevancia', 'avaliacao', 'recentes', 'alfabetica'];
+    const sort = sortOptions.includes(normalizeText(params.sort)) ? normalizeText(params.sort) : 'relevancia';
+    const page = clampNumber(params.page, 1, 100000, 1);
+    const limit = clampNumber(params.limit, 1, 50, 10);
+    const avaliacaoMinima = params.avaliacaoMinima === undefined || normalizeText(params.avaliacaoMinima) === ''
+        ? null
+        : clampNumber(params.avaliacaoMinima, 0, 5, null);
+
+    const where = { status: true };
+    if (avaliacaoMinima !== null) {
+        where.avaliacao = { [Op.gte]: avaliacaoMinima };
+    }
+
+    const andFilters = [];
+    if (search) {
+        const searchLike = likeFilter(search);
+        andFilters.push({
+            [Op.or]: [
+                { nome_fantasia: searchLike },
+                { razaoSocial: searchLike },
+                { descricao: searchLike },
+                { '$Categorium.categoria$': searchLike },
+                { '$Certificaco.certificacao$': searchLike },
+                { '$CapacidadeAtendimento.atendimento$': searchLike },
+                { '$Endereco.Bairro.Cidade.cidade$': searchLike },
+                { '$Endereco.Bairro.Cidade.Estado.estado$': searchLike }
+            ]
+        });
+    }
+
+    if (tipoProduto) {
+        const tipoProdutoLike = likeFilter(tipoProduto);
+        andFilters.push({
+            [Op.or]: [
+                { descricao: tipoProdutoLike },
+                { '$Categorium.categoria$': tipoProdutoLike },
+                { '$Certificaco.certificacao$': tipoProdutoLike },
+                { '$CapacidadeAtendimento.atendimento$': tipoProdutoLike }
+            ]
+        });
+    }
+
+    if (andFilters.length) {
+        where[Op.and] = andFilters;
+    }
+
+    const include = [
+        {
+            model: Categoria,
+            attributes: ['categoria'],
+            where: categoria ? { categoria: likeFilter(categoria) } : undefined,
+            required: Boolean(categoria)
+        },
+        {
+            model: Certificacoes,
+            attributes: ['certificacao'],
+            where: qualificacao ? { certificacao: likeFilter(qualificacao) } : undefined,
+            required: Boolean(qualificacao)
+        },
+        {
+            model: CapacidadeAtendimento,
+            attributes: ['atendimento']
+        },
+        {
+            model: Endereco,
+            attributes: ['logradouro', 'numero'],
+            required: Boolean(cidade || estado),
+            include: [{
+                model: Bairro,
+                attributes: ['bairro'],
+                required: Boolean(cidade || estado),
+                include: [{
+                    model: Cidade,
+                    attributes: ['cidade'],
+                    where: cidade ? { cidade: likeFilter(cidade) } : undefined,
+                    required: Boolean(cidade || estado),
+                    include: [{
+                        model: Estado,
+                        attributes: ['estado'],
+                        where: estado ? { estado: likeFilter(estado) } : undefined,
+                        required: Boolean(estado)
+                    }]
+                }]
+            }]
+        }
+    ];
+
+    const result = await Fornecedor.findAndCountAll({
+        attributes: fornecedorCatalogoAttributes,
+        where,
+        include,
+        distinct: true,
+        limit,
+        offset: (page - 1) * limit,
+        order: buildCatalogoOrder(sort, search)
+    });
+
+    return {
+        data: result.rows.map(mapFornecedorCatalogo),
+        pagination: {
+            page,
+            limit,
+            total: result.count,
+            totalPages: Math.ceil(result.count / limit)
+        }
     };
 };
 
@@ -266,5 +458,6 @@ const loginFornecedor = async ({ email, senha }) => {
 module.exports = {
     cadastrarFornecedor,
     loginFornecedor,
-    listarOpcoes
+    listarOpcoes,
+    buscarCatalogo
 };

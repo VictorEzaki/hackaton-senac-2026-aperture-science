@@ -122,6 +122,17 @@ exports.listarOpcoesFornecedor = async (req, res) => {
     }
 };
 
+exports.buscarCatalogoFornecedores = async (req, res) => {
+    try {
+        const result = await FornecedorService.buscarCatalogo(req.query);
+
+        res.status(200).json(result);
+    } catch (error) {
+        console.error("Erro ao buscar catálogo de fornecedores:", error);
+        sendServiceError(res, error, "Falha ao buscar fornecedores do catálogo.");
+    }
+};
+
 exports.cadastrarEmpresa = async (req, res) => {
     try {
         const novaEmpresa = await EmpresaService.cadastrarEmpresa(req.body);
