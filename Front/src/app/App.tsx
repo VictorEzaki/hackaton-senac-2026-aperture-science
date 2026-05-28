@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   MapPin,
@@ -10,7 +10,6 @@ import {
   Truck,
   Leaf,
   Award,
-  ThumbsUp,
   Clock,
   X,
   ChevronDown,
@@ -62,7 +61,132 @@ interface Supplier {
   color: string;
 }
 
+interface SupplierFromApi {
+  idFornecedor: number;
+  razaoSocial: string;
+  nome_fantasia?: string;
+  email?: string;
+  telefone?: string;
+  descricao?: string;
+  tempo_mercado?: string;
+  website?: string;
+  avaliacao?: number;
+  data_cadastro?: string;
+  Categoria?: {
+    categoria?: string;
+  };
+  Certificaco?: {
+    certificacao?: string;
+  };
+  Certificacoes?: {
+    certificacao?: string;
+  };
+  CapacidadeAtendimento?: {
+    atendimento?: string;
+  };
+  Endereco?: {
+    logradouro?: string;
+    numero?: string;
+    Bairro?: {
+      bairro?: string;
+      Cidade?: {
+        cidade?: string;
+        Estado?: {
+          estado?: string;
+        };
+      };
+    };
+  };
+}
+
+interface SupplierReview {
+  idAvaliacao: number;
+  company: string;
+  rating: number;
+  date: string;
+  text: string;
+}
+
+interface SupplierReviewFromApi {
+  idAvaliacao: number;
+  nota: number;
+  comentario?: string | null;
+  data_avaliacao?: string;
+  Empresa?: {
+    razaoSocial?: string;
+    nome_fantasia?: string;
+  };
+}
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
+
+const DEFAULT_SUPPLIER_OPTIONS = {
+  categorias: ["Embalagens", "Metalurgia", "Polímeros", "Logística", "Tecnologia", "Limpeza"],
+  capacidades_atendimento: ["Local", "Regional", "Nacional", "Internacional"],
+  certificacoes: ["ISO 9001", "ISO 14001", "FSC", "ABNT", "Sem certificação"],
+};
+
+const DEFAULT_COMPANY_OPTIONS = {
+  portes: ["MEI", "Microempresa", "Pequena empresa", "Média empresa", "Grande empresa"],
+};
+
+const supplierColors = ["#0F6E56", "#185FA5", "#6B7280", "#BA7517", "#7C3AED", "#0E7490"];
+
+const getInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "FH";
+
+const mapSupplierFromApi = (supplier: SupplierFromApi, index: number): Supplier => {
+  const name = supplier.nome_fantasia || supplier.razaoSocial || "Fornecedor";
+  const category = supplier.Categoria?.categoria || "Sem categoria";
+  const certification = supplier.Certificacoes?.certificacao || supplier.Certificaco?.certificacao || "";
+  const attendance = supplier.CapacidadeAtendimento?.atendimento || "Atendimento não informado";
+  const city = supplier.Endereco?.Bairro?.Cidade?.cidade || "Cidade não informada";
+  const state = supplier.Endereco?.Bairro?.Cidade?.Estado?.estado || "UF";
+  const rating = Number(supplier.avaliacao || 0);
+  const founded = supplier.data_cadastro
+    ? String(new Date(supplier.data_cadastro).getFullYear())
+    : supplier.tempo_mercado || "não informado";
+  const tags = [certification, attendance, supplier.tempo_mercado]
+    .filter((tag): tag is string => Boolean(tag?.trim()));
+
+  return {
+    id: String(supplier.idFornecedor),
+    name,
+    initials: getInitials(name),
+    category,
+    subcategory: category,
+    location: city,
+    state,
+    rating,
+    reviews: 0,
+    verified: Boolean(certification && certification !== "Sem certificação"),
+    esg: /iso 14001|fsc|esg|sustent/i.test(certification),
+    matchScore: Math.max(60, Math.min(100, Math.round((rating || 3.5) * 20))),
+    deliveryDays: attendance,
+    priceRange: supplier.website || "Consulte condições",
+    description: supplier.descricao || "Fornecedor cadastrado no Supply Hub.",
+    tags,
+    employees: "Não informado",
+    founded,
+    certifications: certification ? [certification] : [],
+    color: supplierColors[index % supplierColors.length],
+  };
+};
+
+const mapSupplierReviewFromApi = (review: SupplierReviewFromApi): SupplierReview => ({
+  idAvaliacao: review.idAvaliacao,
+  company: review.Empresa?.nome_fantasia || review.Empresa?.razaoSocial || "Empresa",
+  rating: Number(review.nota || 0),
+  date: review.data_avaliacao
+    ? new Date(review.data_avaliacao).toLocaleDateString("pt-BR")
+    : "Data não informada",
+  text: review.comentario || "Avaliação sem comentário.",
+});
 
 const SUPPLIERS: Supplier[] = [
   {
@@ -156,36 +280,6 @@ const SUPPLIERS: Supplier[] = [
     founded: "1993",
     certifications: ["ISO 9001", "ISO 45001"],
     color: "#BA7517",
-  },
-];
-
-const REVIEWS = [
-  {
-    company: "Grupo Natura Alimentos",
-    reviewer: "Carlos M.",
-    role: "Gerente de Compras",
-    rating: 5,
-    date: "15 mai 2025",
-    text: "Excelente parceiro. Entrega sempre no prazo, produto de alta qualidade e atendimento impecável. Já fechamos 3 pedidos e todos acima das expectativas.",
-    helpful: 28,
-  },
-  {
-    company: "Loggi Express",
-    reviewer: "Fernanda R.",
-    role: "Diretora de Operações",
-    rating: 5,
-    date: "02 abr 2025",
-    text: "A EcoPack nos ajudou a reduzir nossa pegada de carbono em 40%. Material resistente e preço justo. Recomendo fortemente para qualquer empresa que busca sustentabilidade.",
-    helpful: 41,
-  },
-  {
-    company: "Casa & Cia Varejo",
-    reviewer: "Roberto A.",
-    role: "Comprador Sênior",
-    rating: 4,
-    date: "18 mar 2025",
-    text: "Ótimo produto e fornecedor confiável. Única ressalva é o prazo de entrega que às vezes estica um pouco além do prometido, mas a qualidade compensa.",
-    helpful: 15,
   },
 ];
 
@@ -407,6 +501,56 @@ function Nav({
 function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
   const [showPass, setShowPass] = useState(false);
   const [tab, setTab] = useState<"empresa" | "fornecedor">("empresa");
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleLogin = async () => {
+    setError("");
+
+    if (!email.trim() || !senha.trim()) {
+      setError("Informe e-mail e senha para entrar.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const endpoint = tab === "fornecedor" ? "/api/fornecedores/login" : "/api/empresas/login";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), senha }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(data?.erro || "Não foi possível entrar. Confira seus dados.");
+        return;
+      }
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("tipoUsuario", tab);
+      if (tab === "fornecedor") {
+        localStorage.setItem("idFornecedor", String(data.fornecedor?.idFornecedor || ""));
+        localStorage.setItem("fornecedor", JSON.stringify(data.fornecedor));
+        localStorage.removeItem("idEmpresa");
+        localStorage.removeItem("empresa");
+      } else {
+        localStorage.setItem("idEmpresa", String(data.empresa?.idEmpresa || ""));
+        localStorage.setItem("empresa", JSON.stringify(data.empresa));
+        localStorage.removeItem("idFornecedor");
+        localStorage.removeItem("fornecedor");
+      }
+      setScreen("busca");
+    } catch {
+      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-[calc(100vh-56px)] flex">
@@ -477,6 +621,12 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
             ))}
           </div>
 
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium text-foreground block mb-1.5">
@@ -484,6 +634,11 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
               </label>
               <input
                 type="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  if (error) setError("");
+                }}
                 placeholder="seu@empresa.com.br"
                 className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white"
               />
@@ -498,6 +653,11 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
               <div className="relative">
                 <input
                   type={showPass ? "text" : "password"}
+                  value={senha}
+                  onChange={(event) => {
+                    setSenha(event.target.value);
+                    if (error) setError("");
+                  }}
                   placeholder="••••••••"
                   className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white pr-10"
                 />
@@ -509,8 +669,12 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
                 </button>
               </div>
             </div>
-            <button className="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
-              Entrar na plataforma
+            <button
+              onClick={handleLogin}
+              disabled={isSubmitting}
+              className="w-full bg-primary hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+            >
+              {isSubmitting ? "Entrando..." : "Entrar na plataforma"}
             </button>
           </div>
 
@@ -542,9 +706,189 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
 
 function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
   const [step, setStep] = useState(1);
-  const totalSteps = 3;
+  const [formData, setFormData] = useState({
+    razaoSocial: "",
+    nome_fantasia: "",
+    cnpj: "",
+    descricao: "",
+    seguimento: "",
+    porte: "",
+    website: "",
+    estado: "",
+    cidade: "",
+    bairro: "",
+    cep: "",
+    logradouro: "",
+    numero: "",
+    email: "",
+    telefone: "",
+    senha: "",
+  });
+  const [options, setOptions] = useState(DEFAULT_COMPANY_OPTIONS);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const steps = ["Empresa", "Perfil", "Endereço", "Acesso"];
+  const inputClass =
+    "w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white";
 
-  const steps = ["Dados da empresa", "Responsável", "Preferências"];
+  useEffect(() => {
+    let isMounted = true;
+
+    fetch("/api/empresas/opcoes")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        if (!isMounted) return;
+        setOptions({
+          portes: data.portes?.length ? data.portes : DEFAULT_COMPANY_OPTIONS.portes,
+        });
+      })
+      .catch(() => {
+        if (isMounted) setOptions(DEFAULT_COMPANY_OPTIONS);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const updateField = (field: keyof typeof formData, value: string) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+    if (error) setError("");
+    if (success) setSuccess("");
+  };
+
+  const isValidUrl = (value: string) => {
+    if (!value.trim()) return true;
+
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const validateStep = (targetStep = step) => {
+    if (targetStep === 1) {
+      if (!formData.razaoSocial.trim() || !formData.nome_fantasia.trim() || !formData.cnpj.trim()) {
+        setError("Preencha razão social, nome fantasia e CNPJ para continuar.");
+        return false;
+      }
+
+      if (formData.cnpj.replace(/\D/g, "").length !== 14) {
+        setError("Informe um CNPJ válido com 14 dígitos.");
+        return false;
+      }
+    }
+
+    if (targetStep === 2) {
+      if (!formData.descricao.trim() || !formData.seguimento.trim() || !formData.porte.trim()) {
+        setError("Preencha descrição, segmento e porte da empresa.");
+        return false;
+      }
+
+      if (!isValidUrl(formData.website)) {
+        setError("Informe um site válido, incluindo http:// ou https://.");
+        return false;
+      }
+    }
+
+    if (targetStep === 3) {
+      if (
+        !formData.estado.trim() ||
+        !formData.cidade.trim() ||
+        !formData.bairro.trim() ||
+        !formData.cep.trim() ||
+        !formData.logradouro.trim() ||
+        !formData.numero.trim()
+      ) {
+        setError("Preencha todos os dados de endereço para continuar.");
+        return false;
+      }
+
+      if (formData.cep.replace(/\D/g, "").length !== 8) {
+        setError("Informe um CEP válido com 8 dígitos.");
+        return false;
+      }
+    }
+
+    if (targetStep === 4) {
+      if (!formData.email.trim() || !formData.telefone.trim() || !formData.senha.trim()) {
+        setError("Preencha e-mail, telefone e senha para criar sua conta.");
+        return false;
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        setError("Informe um e-mail válido.");
+        return false;
+      }
+
+      if (formData.senha.length < 6) {
+        setError("A senha deve ter pelo menos 6 caracteres.");
+        return false;
+      }
+    }
+
+    setError("");
+    return true;
+  };
+
+  const goToStep = (nextStep: number) => {
+    if (nextStep > step && !validateStep(step)) return;
+    setStep(nextStep);
+  };
+
+  const handleSubmit = async () => {
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3) || !validateStep(4)) return;
+
+    setIsSubmitting(true);
+    setError("");
+    setSuccess("");
+
+    const payload = {
+      razaoSocial: formData.razaoSocial.trim(),
+      nome_fantasia: formData.nome_fantasia.trim(),
+      cnpj: formData.cnpj.replace(/\D/g, ""),
+      email: formData.email.trim(),
+      telefone: formData.telefone.replace(/\D/g, ""),
+      senha: formData.senha,
+      descricao: formData.descricao.trim(),
+      seguimento: formData.seguimento.trim(),
+      porte: formData.porte.trim(),
+      website: formData.website.trim(),
+      endereco: {
+        estado: formData.estado.trim(),
+        cidade: formData.cidade.trim(),
+        bairro: formData.bairro.trim(),
+        cep: formData.cep.replace(/\D/g, ""),
+        logradouro: formData.logradouro.trim(),
+        numero: formData.numero.trim(),
+      },
+    };
+
+    try {
+      const response = await fetch("/api/empresas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(data?.erro || "Não foi possível cadastrar a empresa.");
+        return;
+      }
+
+      setSuccess("Empresa cadastrada com sucesso. Redirecionando para o login...");
+      window.setTimeout(() => setScreen("login"), 900);
+    } catch {
+      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-[calc(100vh-56px)] flex">
@@ -559,7 +903,7 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
             Encontre fornecedores ideais para o seu negócio
           </h2>
           <p className="text-blue-200 text-sm leading-relaxed mb-8">
-            Acesso gratuito a milhares de fornecedores verificados. Match inteligente com IA. Cotações em minutos.
+            Acesso gratuito a milhares de fornecedores verificados. Cotações em minutos.
           </p>
           <div className="space-y-3">
             {["Busca por linguagem natural", "Match por IA personalizado", "Fornecedores verificados", "Cotações estruturadas"].map((f) => (
@@ -601,8 +945,9 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
 
           <h1 className="text-2xl font-bold text-foreground mb-1">
             {step === 1 && "Dados da empresa"}
-            {step === 2 && "Responsável pelo cadastro"}
-            {step === 3 && "Preferências de busca"}
+            {step === 2 && "Perfil da empresa"}
+            {step === 3 && "Endereço"}
+            {step === 4 && "Acesso"}
           </h1>
           <p className="text-sm text-muted-foreground mb-7">
             Já tem conta?{" "}
@@ -611,57 +956,48 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
             </button>
           </p>
 
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {success}
+            </div>
+          )}
+
           {step === 1 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Razão social *</label>
-                  <input placeholder="Nome completo da empresa" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
-                  <input placeholder="00.000.000/0001-00" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Porte da empresa</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">Selecione</option>
-                    <option>MEI</option>
-                    <option>Micro</option>
-                    <option>Pequena</option>
-                    <option>Média</option>
-                    <option>Grande</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Setor de atuação *</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">Selecione o setor</option>
-                    <option>Alimentício</option>
-                    <option>Automotivo</option>
-                    <option>Construção Civil</option>
-                    <option>E-commerce / Varejo</option>
-                    <option>Indústria Geral</option>
-                    <option>Saúde</option>
-                    <option>Tecnologia</option>
-                    <option>Outro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Estado *</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">UF</option>
-                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
-                      <option key={uf}>{uf}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Cidade *</label>
-                  <input placeholder="Sua cidade" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Razão social *</label>
+                <input
+                  value={formData.razaoSocial}
+                  onChange={(event) => updateField("razaoSocial", event.target.value)}
+                  placeholder="Empresa Exemplo LTDA"
+                  className={inputClass}
+                />
               </div>
-              <button onClick={() => setStep(2)} className="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm mt-2">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Nome fantasia *</label>
+                <input
+                  value={formData.nome_fantasia}
+                  onChange={(event) => updateField("nome_fantasia", event.target.value)}
+                  placeholder="Empresa Exemplo"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
+                <input
+                  value={formData.cnpj}
+                  onChange={(event) => updateField("cnpj", event.target.value)}
+                  placeholder="12.345.678/0001-99"
+                  className={inputClass}
+                />
+              </div>
+              <button onClick={() => goToStep(2)} className="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm mt-2">
                 Continuar
               </button>
             </div>
@@ -669,41 +1005,54 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
 
           {step === 2 && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Descrição *</label>
+                <textarea
+                  value={formData.descricao}
+                  onChange={(event) => updateField("descricao", event.target.value)}
+                  placeholder="Empresa de pequeno porte buscando fornecedores estratégicos."
+                  rows={4}
+                  className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Nome *</label>
-                  <input placeholder="Seu nome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Sobrenome *</label>
-                  <input placeholder="Seu sobrenome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Cargo</label>
-                  <input placeholder="Ex: Gerente de Compras" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">E-mail corporativo *</label>
-                  <input type="email" placeholder="seu@empresa.com.br" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Telefone</label>
-                  <input placeholder="(00) 00000-0000" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
-                  <input type="password" placeholder="Mín. 8 caracteres" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Segmento *</label>
+                  <input
+                    value={formData.seguimento}
+                    onChange={(event) => updateField("seguimento", event.target.value)}
+                    placeholder="Varejo"
+                    className={inputClass}
+                  />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Confirmar senha *</label>
-                  <input type="password" placeholder="Repita a senha" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Porte *</label>
+                  <select
+                    value={formData.porte}
+                    onChange={(event) => updateField("porte", event.target.value)}
+                    className={`${inputClass} text-foreground`}
+                  >
+                    <option value="">Selecione o porte</option>
+                    {options.portes.map((porte) => (
+                      <option key={porte} value={porte}>{porte}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Website</label>
+                <input
+                  value={formData.website}
+                  onChange={(event) => updateField("website", event.target.value)}
+                  placeholder="https://empresa.com"
+                  className={inputClass}
+                />
+              </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
+                <button onClick={() => goToStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
                   Voltar
                 </button>
-                <button onClick={() => setStep(3)} className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
+                <button onClick={() => goToStep(3)} className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
                   Continuar
                 </button>
               </div>
@@ -711,54 +1060,120 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
           )}
 
           {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Quais categorias de fornecedor você busca? (selecione todas que se aplicam)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Embalagens", "Metalurgia", "Polímeros", "Fixadores", "Logística", "Matéria-Prima", "Equipamentos", "Serviços Industriais", "TI / Software", "Limpeza"].map((cat) => (
-                    <CategoryChip key={cat} label={cat} />
-                  ))}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Estado *</label>
+                  <input
+                    value={formData.estado}
+                    onChange={(event) => updateField("estado", event.target.value)}
+                    placeholder="São Paulo"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Cidade *</label>
+                  <input
+                    value={formData.cidade}
+                    onChange={(event) => updateField("cidade", event.target.value)}
+                    placeholder="São Paulo"
+                    className={inputClass}
+                  />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Regiões de interesse
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Sul", "Sudeste", "Centro-Oeste", "Nordeste", "Norte", "Todo o Brasil"].map((r) => (
-                    <CategoryChip key={r} label={r} />
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Bairro *</label>
+                  <input
+                    value={formData.bairro}
+                    onChange={(event) => updateField("bairro", event.target.value)}
+                    placeholder="Centro"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">CEP *</label>
+                  <input
+                    value={formData.cep}
+                    onChange={(event) => updateField("cep", event.target.value)}
+                    placeholder="01001000"
+                    className={inputClass}
+                  />
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Volume de compras mensal estimado
-                </label>
-                <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                  <option>Até R$ 10 mil</option>
-                  <option>R$ 10k – R$ 50k</option>
-                  <option>R$ 50k – R$ 200k</option>
-                  <option>Acima de R$ 200k</option>
-                </select>
-              </div>
-              <div className="flex items-start gap-2.5 p-3 bg-secondary border border-blue-100 rounded-xl">
-                <input type="checkbox" id="terms" className="mt-0.5 accent-primary" />
-                <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
-                  Concordo com os <span className="text-primary font-semibold">Termos de Uso</span> e a{" "}
-                  <span className="text-primary font-semibold">Política de Privacidade</span> da SupplyNet.
-                </label>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Logradouro *</label>
+                  <input
+                    value={formData.logradouro}
+                    onChange={(event) => updateField("logradouro", event.target.value)}
+                    placeholder="Praça da Sé"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Número *</label>
+                  <input
+                    value={formData.numero}
+                    onChange={(event) => updateField("numero", event.target.value)}
+                    placeholder="100"
+                    className={inputClass}
+                  />
+                </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
+                <button onClick={() => goToStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
                   Voltar
                 </button>
                 <button
-                  onClick={() => setScreen("busca")}
+                  onClick={() => goToStep(4)}
                   className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
                 >
-                  Criar conta gratuita
+                  Continuar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">E-mail *</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                  placeholder="contato@empresa.com"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Telefone *</label>
+                <input
+                  value={formData.telefone}
+                  onChange={(event) => updateField("telefone", event.target.value)}
+                  placeholder="(11) 99999-9999"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
+                <input
+                  type="password"
+                  value={formData.senha}
+                  onChange={(event) => updateField("senha", event.target.value)}
+                  placeholder="Mín. 6 caracteres"
+                  className={inputClass}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => goToStep(3)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="flex-1 bg-primary hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+                >
+                  {isSubmitting ? "Criando..." : "Criar conta gratuita"}
                 </button>
               </div>
             </div>
@@ -793,22 +1208,58 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
     razaoSocial: "",
     nome_fantasia: "",
     cnpj: "",
-    email: "",
-    telefone: "",
-    senha: "",
     descricao: "",
     tempo_mercado: "",
     website: "",
+    categoria: "",
+    capacidade_atendimento: "",
+    certificacao: "",
+    estado: "",
+    cidade: "",
+    bairro: "",
+    cep: "",
+    logradouro: "",
+    numero: "",
+    email: "",
+    telefone: "",
+    senha: "",
   });
+  const [options, setOptions] = useState(DEFAULT_SUPPLIER_OPTIONS);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const steps = ["Empresa", "Contato", "Perfil"];
+  const steps = ["Empresa", "Atuação", "Endereço", "Acesso"];
   const inputClass =
     "w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white";
+
+  useEffect(() => {
+    let isMounted = true;
+
+    fetch("/api/fornecedores/opcoes")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => {
+        if (!isMounted) return;
+        setOptions({
+          categorias: data.categorias?.length ? data.categorias : DEFAULT_SUPPLIER_OPTIONS.categorias,
+          capacidades_atendimento: data.capacidades_atendimento?.length
+            ? data.capacidades_atendimento
+            : DEFAULT_SUPPLIER_OPTIONS.capacidades_atendimento,
+          certificacoes: data.certificacoes?.length ? data.certificacoes : DEFAULT_SUPPLIER_OPTIONS.certificacoes,
+        });
+      })
+      .catch(() => {
+        if (isMounted) setOptions(DEFAULT_SUPPLIER_OPTIONS);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const updateField = (field: keyof typeof formData, value: string) => {
     setFormData((current) => ({ ...current, [field]: value }));
     if (error) setError("");
+    if (success) setSuccess("");
   };
 
   const isValidUrl = (value: string) => {
@@ -824,15 +1275,57 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
 
   const validateStep = (targetStep = step) => {
     if (targetStep === 1) {
-      if (!formData.razaoSocial.trim() || !formData.nome_fantasia.trim() || !formData.cnpj.trim()) {
-        setError("Preencha razão social, nome fantasia e CNPJ para continuar.");
+      if (
+        !formData.razaoSocial.trim() ||
+        !formData.nome_fantasia.trim() ||
+        !formData.cnpj.trim() ||
+        !formData.descricao.trim() ||
+        !formData.tempo_mercado.trim()
+      ) {
+        setError("Preencha os dados obrigatórios da empresa para continuar.");
+        return false;
+      }
+
+      if (formData.cnpj.replace(/\D/g, "").length !== 14) {
+        setError("Informe um CNPJ válido com 14 dígitos.");
+        return false;
+      }
+
+      if (!isValidUrl(formData.website)) {
+        setError("Informe um site válido, incluindo http:// ou https://.");
         return false;
       }
     }
 
     if (targetStep === 2) {
+      if (!formData.categoria.trim() || !formData.capacidade_atendimento.trim() || !formData.certificacao.trim()) {
+        setError("Selecione categoria, capacidade de atendimento e certificação.");
+        return false;
+      }
+    }
+
+    if (targetStep === 3) {
+      if (
+        !formData.estado.trim() ||
+        !formData.cidade.trim() ||
+        !formData.bairro.trim() ||
+        !formData.cep.trim() ||
+        !formData.logradouro.trim() ||
+        !formData.numero.trim()
+      ) {
+        setError("Preencha todos os dados de endereço para continuar.");
+        return false;
+      }
+
+      if (formData.cep.replace(/\D/g, "").length !== 8) {
+        setError("Informe um CEP válido com 8 dígitos.");
+        return false;
+      }
+    }
+
+    if (targetStep === 4) {
       if (!formData.email.trim() || !formData.telefone.trim() || !formData.senha.trim()) {
-        setError("Preencha e-mail, telefone e senha para continuar.");
+        setError("Preencha e-mail, telefone e senha para criar sua conta.");
         return false;
       }
 
@@ -847,18 +1340,6 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
       }
     }
 
-    if (targetStep === 3) {
-      if (!formData.descricao.trim() || !formData.tempo_mercado.trim()) {
-        setError("Preencha a descrição e o tempo de mercado para criar o perfil.");
-        return false;
-      }
-
-      if (!isValidUrl(formData.website)) {
-        setError("Informe um site válido, incluindo http:// ou https://.");
-        return false;
-      }
-    }
-
     setError("");
     return true;
   };
@@ -869,21 +1350,33 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) return;
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3) || !validateStep(4)) return;
 
     setIsSubmitting(true);
     setError("");
+    setSuccess("");
 
     const payload = {
       razaoSocial: formData.razaoSocial.trim(),
       nome_fantasia: formData.nome_fantasia.trim(),
-      cnpj: formData.cnpj.trim(),
+      cnpj: formData.cnpj.replace(/\D/g, ""),
       email: formData.email.trim(),
-      telefone: formData.telefone.trim(),
+      telefone: formData.telefone.replace(/\D/g, ""),
       senha: formData.senha,
       descricao: formData.descricao.trim(),
       tempo_mercado: formData.tempo_mercado.trim(),
       website: formData.website.trim(),
+      categoria: formData.categoria.trim(),
+      capacidade_atendimento: formData.capacidade_atendimento.trim(),
+      certificacao: formData.certificacao.trim(),
+      endereco: {
+        estado: formData.estado.trim(),
+        cidade: formData.cidade.trim(),
+        bairro: formData.bairro.trim(),
+        cep: formData.cep.replace(/\D/g, ""),
+        logradouro: formData.logradouro.trim(),
+        numero: formData.numero.trim(),
+      },
     };
 
     try {
@@ -900,7 +1393,8 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
         return;
       }
 
-      setScreen("busca");
+      setSuccess("Fornecedor cadastrado com sucesso. Redirecionando para o login...");
+      window.setTimeout(() => setScreen("login"), 900);
     } catch {
       setError("Não foi possível conectar com a API. Tente novamente em instantes.");
     } finally {
@@ -969,8 +1463,9 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
 
           <h1 className="text-2xl font-bold text-foreground mb-1">
             {step === 1 && "Dados da empresa"}
-            {step === 2 && "Contato e acesso"}
-            {step === 3 && "Perfil público"}
+            {step === 2 && "Dados de atuação"}
+            {step === 3 && "Endereço"}
+            {step === 4 && "Acesso"}
           </h1>
           <p className="text-sm text-muted-foreground mb-7">
             Já tem conta?{" "}
@@ -982,6 +1477,12 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
           {error && (
             <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {success}
             </div>
           )}
 
@@ -1014,6 +1515,36 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
                   className={inputClass}
                 />
               </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Descrição *</label>
+                <textarea
+                  value={formData.descricao}
+                  onChange={(event) => updateField("descricao", event.target.value)}
+                  placeholder="Fornecedor especializado em embalagens sustentáveis."
+                  rows={4}
+                  className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Tempo de mercado *</label>
+                  <input
+                    value={formData.tempo_mercado}
+                    onChange={(event) => updateField("tempo_mercado", event.target.value)}
+                    placeholder="5 anos"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Website</label>
+                  <input
+                    value={formData.website}
+                    onChange={(event) => updateField("website", event.target.value)}
+                    placeholder="https://fornecedor.com"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
               <button onClick={() => goToStep(2)} className="w-full bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
                 Continuar
               </button>
@@ -1023,12 +1554,134 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
           {step === 2 && (
             <div className="space-y-4">
               <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Categoria *</label>
+                <select
+                  value={formData.categoria}
+                  onChange={(event) => updateField("categoria", event.target.value)}
+                  className={`${inputClass} text-foreground`}
+                >
+                  <option value="">Selecione a categoria</option>
+                  {options.categorias.map((categoria) => (
+                    <option key={categoria} value={categoria}>{categoria}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Capacidade de atendimento *</label>
+                <select
+                  value={formData.capacidade_atendimento}
+                  onChange={(event) => updateField("capacidade_atendimento", event.target.value)}
+                  className={`${inputClass} text-foreground`}
+                >
+                  <option value="">Selecione a capacidade</option>
+                  {options.capacidades_atendimento.map((capacidade) => (
+                    <option key={capacidade} value={capacidade}>{capacidade}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Certificação *</label>
+                <select
+                  value={formData.certificacao}
+                  onChange={(event) => updateField("certificacao", event.target.value)}
+                  className={`${inputClass} text-foreground`}
+                >
+                  <option value="">Selecione a certificação</option>
+                  {options.certificacoes.map((certificacao) => (
+                    <option key={certificacao} value={certificacao}>{certificacao}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => goToStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button onClick={() => goToStep(3)} className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">Continuar</button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Estado *</label>
+                  <input
+                    value={formData.estado}
+                    onChange={(event) => updateField("estado", event.target.value)}
+                    placeholder="São Paulo"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Cidade *</label>
+                  <input
+                    value={formData.cidade}
+                    onChange={(event) => updateField("cidade", event.target.value)}
+                    placeholder="São Paulo"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Bairro *</label>
+                  <input
+                    value={formData.bairro}
+                    onChange={(event) => updateField("bairro", event.target.value)}
+                    placeholder="Centro"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">CEP *</label>
+                  <input
+                    value={formData.cep}
+                    onChange={(event) => updateField("cep", event.target.value)}
+                    placeholder="01001000"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Logradouro *</label>
+                  <input
+                    value={formData.logradouro}
+                    onChange={(event) => updateField("logradouro", event.target.value)}
+                    placeholder="Praça da Sé"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-foreground block mb-1.5">Número *</label>
+                  <input
+                    value={formData.numero}
+                    onChange={(event) => updateField("numero", event.target.value)}
+                    placeholder="100"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => goToStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button
+                  onClick={() => goToStep(4)}
+                  className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+                >
+                  Continuar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-4">
+              <div>
                 <label className="text-sm font-medium text-foreground block mb-1.5">E-mail *</label>
                 <input
                   type="email"
                   value={formData.email}
                   onChange={(event) => updateField("email", event.target.value)}
-                  placeholder="contato@techsolutions.com.br"
+                  placeholder="contato@fornecedor.com"
                   className={inputClass}
                 />
               </div>
@@ -1037,7 +1690,7 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
                 <input
                   value={formData.telefone}
                   onChange={(event) => updateField("telefone", event.target.value)}
-                  placeholder="(47) 99999-9999"
+                  placeholder="(11) 99999-9999"
                   className={inputClass}
                 />
               </div>
@@ -1052,44 +1705,7 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
                 />
               </div>
               <div className="flex gap-3">
-                <button onClick={() => goToStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
-                <button onClick={() => goToStep(3)} className="flex-1 bg-[#0F6E56] hover:bg-teal-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">Continuar</button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Descrição da empresa *</label>
-                <textarea
-                  value={formData.descricao}
-                  onChange={(event) => updateField("descricao", event.target.value)}
-                  placeholder="Fornecedor especializado em soluções tecnológicas para pequenas e médias empresas."
-                  rows={4}
-                  className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white resize-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Tempo de mercado *</label>
-                <input
-                  value={formData.tempo_mercado}
-                  onChange={(event) => updateField("tempo_mercado", event.target.value)}
-                  placeholder="5 anos"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-1.5">Site da empresa</label>
-                <input
-                  value={formData.website}
-                  onChange={(event) => updateField("website", event.target.value)}
-                  placeholder="https://www.techsolutions.com.br"
-                  className={inputClass}
-                />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => goToStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
+                <button onClick={() => goToStep(3)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">Voltar</button>
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting}
@@ -1132,10 +1748,6 @@ function BuscaScreen({
   return (
     <main className="min-h-[calc(100vh-56px)] flex flex-col">
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-20 text-center">
-        <div className="inline-flex items-center gap-2 bg-secondary text-primary text-xs font-semibold px-3 py-1.5 rounded-full mb-8 border border-blue-100">
-          <Zap className="w-3 h-3" />
-          Match inteligente com IA
-        </div>
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl mb-4">
           Encontre o fornecedor{" "}
           <span className="text-primary">ideal</span> para o seu negócio
@@ -1254,7 +1866,7 @@ function ResultadosScreen({
 }: {
   query: string;
   setQuery: (q: string) => void;
-  setActiveSupplier: (id: string) => void;
+  setActiveSupplier: (supplier: Supplier) => void;
   setScreen: (s: Screen) => void;
 }) {
   const [localQuery, setLocalQuery] = useState(query);
@@ -1262,10 +1874,48 @@ function ResultadosScreen({
   const [sortBy, setSortBy] = useState("match");
   const [onlyVerified, setOnlyVerified] = useState(false);
   const [onlyESG, setOnlyESG] = useState(false);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filters = ["Todos", "Embalagens", "Metalurgia", "Polímeros", "Fixadores", "Logística"];
+  const loadSuppliers = async () => {
+    setIsLoading(true);
+    setError("");
 
-  const sorted = [...SUPPLIERS]
+    try {
+      const response = await fetch("/api/match");
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(data?.erro || "Não foi possível carregar os fornecedores.");
+        setSuppliers([]);
+        return;
+      }
+
+      const apiSuppliers = Array.isArray(data?.ranking) ? data.ranking : [];
+      setSuppliers(apiSuppliers.map(mapSupplierFromApi));
+    } catch {
+      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+      setSuppliers([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSuppliers();
+  }, []);
+
+  useEffect(() => {
+    setLocalQuery(query);
+  }, [query]);
+
+  const filters = [
+    "Todos",
+    ...Array.from(new Set(suppliers.map((supplier) => supplier.category).filter(Boolean))).sort(),
+  ];
+
+  const sorted = [...suppliers]
     .filter((s) => !onlyVerified || s.verified)
     .filter((s) => !onlyESG || s.esg)
     .filter((s) => activeFilter === "Todos" || s.category === activeFilter)
@@ -1273,9 +1923,14 @@ function ResultadosScreen({
       sortBy === "match" ? b.matchScore - a.matchScore : b.rating - a.rating
     );
 
-  const openPerfil = (id: string) => {
-    setActiveSupplier(id);
+  const openPerfil = (supplier: Supplier) => {
+    setActiveSupplier(supplier);
     setScreen("perfil");
+  };
+
+  const handleRefineSearch = () => {
+    setQuery(localQuery);
+    loadSuppliers();
   };
 
   return (
@@ -1286,7 +1941,7 @@ function ResultadosScreen({
           <input
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && setQuery(localQuery)}
+            onKeyDown={(e) => e.key === "Enter" && handleRefineSearch()}
             className="flex-1 border-0 outline-none text-sm text-foreground bg-transparent"
             placeholder="Refine sua busca..."
           />
@@ -1299,8 +1954,11 @@ function ResultadosScreen({
             </button>
           )}
         </div>
-        <button className="flex items-center gap-2 bg-white border border-border rounded-xl px-4 py-3 text-sm font-medium hover:border-primary/40 transition-colors">
-          <Filter className="w-4 h-4" /> Filtros
+        <button
+          onClick={handleRefineSearch}
+          className="flex items-center gap-2 bg-white border border-border rounded-xl px-4 py-3 text-sm font-medium hover:border-primary/40 transition-colors"
+        >
+          <Filter className="w-4 h-4" /> Buscar
         </button>
       </div>
 
@@ -1312,7 +1970,7 @@ function ResultadosScreen({
               Busca analisada pela IA
             </p>
             <p className="text-sm text-muted-foreground">
-              "{query}" — exibindo {sorted.length} fornecedores mais compatíveis,
+              "{query}" — exibindo {isLoading ? "..." : sorted.length} fornecedores cadastrados,
               ranqueados por localização, reputação, sustentabilidade e prazo.
             </p>
           </div>
@@ -1371,7 +2029,7 @@ function ResultadosScreen({
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-muted-foreground">
-              {sorted.length} fornecedores encontrados
+              {isLoading ? "Carregando fornecedores..." : `${sorted.length} fornecedores encontrados`}
             </p>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Ordenar por</span>
@@ -1386,12 +2044,43 @@ function ResultadosScreen({
             </div>
           </div>
 
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">
+              <p className="font-semibold mb-2">Falha ao carregar fornecedores</p>
+              <p className="mb-4">{error}</p>
+              <button
+                onClick={loadSuppliers}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
+
+          {isLoading && !error && (
+            <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+              <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">Carregando fornecedores cadastrados...</p>
+            </div>
+          )}
+
+          {!isLoading && !error && sorted.length === 0 && (
+            <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+              <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">Nenhum fornecedor cadastrado encontrado</p>
+              <p className="text-sm mt-1">
+                Cadastre um fornecedor ou ajuste os filtros para visualizar resultados.
+              </p>
+            </div>
+          )}
+
+          {!isLoading && !error && sorted.length > 0 && (
           <div className="space-y-3">
             {sorted.map((supplier, idx) => (
               <div
                 key={supplier.id}
                 className="bg-white border border-border rounded-xl p-5 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer"
-                onClick={() => openPerfil(supplier.id)}
+                onClick={() => openPerfil(supplier)}
               >
                 <div className="flex items-start gap-4">
                   <div className="relative flex-shrink-0">
@@ -1462,6 +2151,7 @@ function ResultadosScreen({
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     </main>
@@ -1471,15 +2161,127 @@ function ResultadosScreen({
 // ─── Screen: Perfil do Fornecedor ─────────────────────────────────────────────
 
 function PerfilScreen({
-  supplierId,
+  supplier,
   setScreen,
 }: {
-  supplierId: string;
+  supplier: Supplier | null;
   setScreen: (s: Screen) => void;
 }) {
-  const supplier = SUPPLIERS.find((s) => s.id === supplierId) ?? SUPPLIERS[0];
   const [activeTab, setActiveTab] = useState("sobre");
+  const [reviews, setReviews] = useState<SupplierReview[]>([]);
+  const [reviewAverage, setReviewAverage] = useState(supplier?.rating || 0);
+  const [reviewTotal, setReviewTotal] = useState(supplier?.reviews || 0);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const tabs = ["sobre", "produtos", "avaliações", "portfólio", "esg"];
+  const tipoUsuario = typeof window !== "undefined" ? localStorage.getItem("tipoUsuario") : null;
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const canReviewSupplier = tipoUsuario === "empresa" && Boolean(token);
+
+  const loadSupplierReviews = async () => {
+    if (!supplier) return;
+
+    setIsLoadingReviews(true);
+    setReviewError("");
+
+    try {
+      const response = await fetch(`/api/fornecedores/${supplier.id}/avaliacoes`);
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setReviewError(data?.erro || "Não foi possível carregar as avaliações.");
+        setReviews([]);
+        return;
+      }
+
+      const mappedReviews = Array.isArray(data?.avaliacoes)
+        ? data.avaliacoes.map(mapSupplierReviewFromApi)
+        : [];
+
+      setReviews(mappedReviews);
+      setReviewAverage(Number(data?.media || 0));
+      setReviewTotal(Number(data?.total || mappedReviews.length));
+    } catch {
+      setReviewError("Não foi possível conectar com a API de avaliações.");
+      setReviews([]);
+    } finally {
+      setIsLoadingReviews(false);
+    }
+  };
+
+  const submitSupplierReview = async () => {
+    if (!supplier || !token) {
+      setReviewError("Entre como empresa para avaliar este fornecedor.");
+      return;
+    }
+
+    setIsSubmittingReview(true);
+    setReviewError("");
+    setReviewSuccess("");
+
+    try {
+      const response = await fetch(`/api/fornecedores/${supplier.id}/avaliacoes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nota: reviewRating,
+          comentario: reviewComment.trim(),
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setReviewError(data?.erro || "Não foi possível registrar a avaliação.");
+        return;
+      }
+
+      setReviewSuccess("Avaliação registrada com sucesso.");
+      setReviewComment("");
+      await loadSupplierReviews();
+    } catch {
+      setReviewError("Não foi possível conectar com a API de avaliações.");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  useEffect(() => {
+    setReviews([]);
+    setReviewAverage(supplier?.rating || 0);
+    setReviewTotal(supplier?.reviews || 0);
+    setReviewError("");
+    setReviewSuccess("");
+    setReviewComment("");
+
+    if (supplier) {
+      loadSupplierReviews();
+    }
+  }, [supplier?.id]);
+
+  if (!supplier) {
+    return (
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        <button
+          onClick={() => setScreen("resultados")}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-5 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> Voltar ao catálogo
+        </button>
+        <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+          <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium">Selecione um fornecedor no catálogo</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-8">
@@ -1541,7 +2343,7 @@ function PerfilScreen({
                   {supplier.founded}
                 </p>
                 <div className="flex items-center gap-4 flex-wrap">
-                  <StarRating rating={supplier.rating} count={supplier.reviews} />
+                  <StarRating rating={reviewAverage} count={reviewTotal} />
                   <span className="text-sm text-muted-foreground flex items-center gap-1">
                     <Truck className="w-3.5 h-3.5" />
                     {supplier.deliveryDays}
@@ -1597,7 +2399,7 @@ function PerfilScreen({
             }`}
           >
             {t === "avaliações"
-              ? `Avaliações (${supplier.reviews})`
+              ? `Avaliações (${reviewTotal})`
               : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
@@ -1666,10 +2468,10 @@ function PerfilScreen({
           <div className="bg-white border border-border rounded-xl p-5 flex gap-8 flex-wrap">
             <div className="text-center">
               <div className="text-5xl font-bold text-foreground">
-                {supplier.rating.toFixed(1)}
+                {reviewAverage.toFixed(1)}
               </div>
-              <StarRating rating={supplier.rating} />
-              <p className="text-xs text-muted-foreground mt-1">{supplier.reviews} avaliações</p>
+              <StarRating rating={reviewAverage} />
+              <p className="text-xs text-muted-foreground mt-1">{reviewTotal} avaliações</p>
             </div>
             <div className="flex-1 min-w-[200px] space-y-2">
               {[
@@ -1694,31 +2496,98 @@ function PerfilScreen({
             </div>
           </div>
 
-          {REVIEWS.map((r, i) => (
-            <div key={i} className="bg-white border border-border rounded-xl p-5">
+          {canReviewSupplier && (
+            <div className="bg-white border border-border rounded-xl p-5">
+              <h3 className="font-semibold text-foreground mb-4">Avaliar fornecedor</h3>
+              <div className="flex items-center gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setReviewRating(value)}
+                    className="p-1 text-amber-500 hover:scale-105 transition-transform"
+                  >
+                    <Star
+                      className="w-6 h-6"
+                      fill={value <= reviewRating ? "currentColor" : "none"}
+                    />
+                  </button>
+                ))}
+                <span className="text-sm text-muted-foreground ml-2">{reviewRating}/5</span>
+              </div>
+              <textarea
+                value={reviewComment}
+                onChange={(event) => {
+                  setReviewComment(event.target.value);
+                  if (reviewError) setReviewError("");
+                  if (reviewSuccess) setReviewSuccess("");
+                }}
+                rows={4}
+                maxLength={1000}
+                placeholder="Conte como foi sua experiência com este fornecedor."
+                className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white resize-none mb-3"
+              />
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs text-muted-foreground">{reviewComment.length}/1000 caracteres</p>
+                <button
+                  onClick={submitSupplierReview}
+                  disabled={isSubmittingReview}
+                  className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSubmittingReview ? "Enviando..." : "Enviar avaliação"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!canReviewSupplier && (
+            <div className="bg-secondary border border-blue-100 rounded-xl p-4 text-sm text-muted-foreground">
+              Entre como empresa para avaliar este fornecedor.
+            </div>
+          )}
+
+          {reviewError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {reviewError}
+            </div>
+          )}
+
+          {reviewSuccess && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {reviewSuccess}
+            </div>
+          )}
+
+          {isLoadingReviews && (
+            <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+              <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">Carregando avaliações...</p>
+            </div>
+          )}
+
+          {!isLoadingReviews && reviews.length === 0 && (
+            <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+              <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">Este fornecedor ainda não recebeu avaliações.</p>
+            </div>
+          )}
+
+          {!isLoadingReviews && reviews.map((review) => (
+            <div key={review.idAvaliacao} className="bg-white border border-border rounded-xl p-5">
               <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground">
-                    {r.reviewer[0]}
+                    {review.company[0]}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-foreground">
-                        {r.company}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        via {r.reviewer} · {r.role}
-                      </span>
-                    </div>
-                    <StarRating rating={r.rating} />
+                    <span className="text-sm font-semibold text-foreground">
+                      {review.company}
+                    </span>
+                    <StarRating rating={review.rating} />
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">{r.date}</span>
+                <span className="text-xs text-muted-foreground">{review.date}</span>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed mb-3">{r.text}</p>
-              <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                <ThumbsUp className="w-3.5 h-3.5" /> Útil ({r.helpful})
-              </button>
+              <p className="text-sm text-muted-foreground leading-relaxed">{review.text}</p>
             </div>
           ))}
         </div>
@@ -1742,7 +2611,7 @@ function PerfilScreen({
 export default function App() {
   const [screen, setScreen] = useState<Screen>("busca");
   const [query, setQuery] = useState("");
-  const [activeSupplierId, setActiveSupplierId] = useState("1");
+  const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null);
 
   const renderScreen = () => {
     switch (screen) {
@@ -1753,12 +2622,12 @@ export default function App() {
           <ResultadosScreen
             query={query}
             setQuery={setQuery}
-            setActiveSupplier={setActiveSupplierId}
+            setActiveSupplier={setActiveSupplier}
             setScreen={setScreen}
           />
         );
       case "perfil":
-        return <PerfilScreen supplierId={activeSupplierId} setScreen={setScreen} />;
+        return <PerfilScreen supplier={activeSupplier} setScreen={setScreen} />;
       case "login":
         return <LoginScreen setScreen={setScreen} />;
       case "cadastro-empresa":
