@@ -541,10 +541,126 @@ function LoginScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
 // ─── Screen: Cadastro Empresa ─────────────────────────────────────────────────
 
 function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }) {
-  const [step, setStep] = useState(1);
-  const totalSteps = 3;
+  const [formData, setFormData] = useState({
+    razaoSocial: "",
+    nome_fantasia: "",
+    cnpj: "",
+    email: "",
+    telefone: "",
+    senha: "",
+    descricao: "",
+    seguimento: "",
+    website: "",
+  });
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const steps = ["Dados da empresa", "Responsável", "Preferências"];
+  const inputClass =
+    "w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white";
+
+  const updateField = (field: keyof typeof formData, value: string) => {
+    setFormData((current) => ({ ...current, [field]: value }));
+    if (error) setError("");
+    if (successMessage) setSuccessMessage("");
+  };
+
+  const isValidUrl = (value: string) => {
+    if (!value.trim()) return true;
+
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const validateForm = () => {
+    if (!formData.razaoSocial.trim() || !formData.nome_fantasia.trim() || !formData.cnpj.trim()) {
+      setError("Preencha razão social, nome fantasia e CNPJ para continuar.");
+      return false;
+    }
+
+    if (!formData.email.trim() || !formData.telefone.trim() || !formData.senha.trim() || !formData.seguimento.trim()) {
+      setError("Preencha e-mail, telefone, senha e seguimento para continuar.");
+      return false;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError("Informe um e-mail válido.");
+      return false;
+    }
+
+    if (formData.senha.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return false;
+    }
+
+    if (!isValidUrl(formData.website)) {
+      setError("Informe um site válido, incluindo http:// ou https://.");
+      return false;
+    }
+
+    setError("");
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    setError("");
+    setSuccessMessage("");
+
+    const payload = {
+      razaoSocial: formData.razaoSocial.trim(),
+      nome_fantasia: formData.nome_fantasia.trim(),
+      cnpj: formData.cnpj.trim(),
+      email: formData.email.trim(),
+      telefone: formData.telefone.trim(),
+      senha: formData.senha,
+      descricao: formData.descricao.trim(),
+      seguimento: formData.seguimento.trim(),
+      website: formData.website.trim(),
+    };
+
+    try {
+      const response = await fetch("/api/empresas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        setError(data?.erro || "Não foi possível cadastrar a empresa.");
+        return;
+      }
+
+      setSuccessMessage(data?.mensagem || "Empresa cadastrada com sucesso.");
+      setFormData({
+        razaoSocial: "",
+        nome_fantasia: "",
+        cnpj: "",
+        email: "",
+        telefone: "",
+        senha: "",
+        descricao: "",
+        seguimento: "",
+        website: "",
+      });
+
+      window.setTimeout(() => {
+        setScreen("busca");
+      }, 900);
+    } catch {
+      setError("Não foi possível conectar com a API. Tente novamente em instantes.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <main className="min-h-[calc(100vh-56px)] flex">
@@ -575,194 +691,147 @@ function CadastroEmpresaScreen({ setScreen }: { setScreen: (s: Screen) => void }
 
       {/* Right panel */}
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-background overflow-y-auto">
-        <div className="w-full max-w-md">
-          {/* Steps */}
-          <div className="flex items-center gap-2 mb-8">
-            {steps.map((s, i) => (
-              <div key={s} className="flex items-center gap-2 flex-1">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all ${
-                  i + 1 < step
-                    ? "bg-teal-500 text-white"
-                    : i + 1 === step
-                    ? "bg-primary text-white"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {i + 1 < step ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
-                </div>
-                <span className={`text-xs font-medium hidden sm:block ${i + 1 === step ? "text-foreground" : "text-muted-foreground"}`}>
-                  {s}
-                </span>
-                {i < steps.length - 1 && (
-                  <div className={`flex-1 h-px ${i + 1 < step ? "bg-teal-400" : "bg-border"}`} />
-                )}
-              </div>
-            ))}
+        <div className="w-full max-w-2xl">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-foreground mb-1">Cadastro da empresa</h1>
+            <p className="text-sm text-muted-foreground mb-3">
+              Já tem conta?{" "}
+              <button onClick={() => setScreen("login")} className="text-primary font-semibold hover:underline">
+                Entrar
+              </button>
+            </p>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-500" />
+              Os campos abaixo seguem exatamente o contrato do backend para `Empresa`.
+            </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-foreground mb-1">
-            {step === 1 && "Dados da empresa"}
-            {step === 2 && "Responsável pelo cadastro"}
-            {step === 3 && "Preferências de busca"}
-          </h1>
-          <p className="text-sm text-muted-foreground mb-7">
-            Já tem conta?{" "}
-            <button onClick={() => setScreen("login")} className="text-primary font-semibold hover:underline">
-              Entrar
-            </button>
-          </p>
-
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Razão social *</label>
-                  <input placeholder="Nome completo da empresa" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
-                  <input placeholder="00.000.000/0001-00" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Porte da empresa</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">Selecione</option>
-                    <option>MEI</option>
-                    <option>Micro</option>
-                    <option>Pequena</option>
-                    <option>Média</option>
-                    <option>Grande</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Setor de atuação *</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">Selecione o setor</option>
-                    <option>Alimentício</option>
-                    <option>Automotivo</option>
-                    <option>Construção Civil</option>
-                    <option>E-commerce / Varejo</option>
-                    <option>Indústria Geral</option>
-                    <option>Saúde</option>
-                    <option>Tecnologia</option>
-                    <option>Outro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Estado *</label>
-                  <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                    <option value="">UF</option>
-                    {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map((uf) => (
-                      <option key={uf}>{uf}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Cidade *</label>
-                  <input placeholder="Sua cidade" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
+          <div className="bg-white border border-border rounded-2xl shadow-sm p-6 sm:p-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Razão social *</label>
+                <input
+                  value={formData.razaoSocial}
+                  onChange={(event) => updateField("razaoSocial", event.target.value)}
+                  placeholder="Nome jurídico da empresa"
+                  className={inputClass}
+                />
               </div>
-              <button onClick={() => setStep(2)} className="w-full bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm mt-2">
-                Continuar
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Nome fantasia *</label>
+                <input
+                  value={formData.nome_fantasia}
+                  onChange={(event) => updateField("nome_fantasia", event.target.value)}
+                  placeholder="Nome comercial da empresa"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">CNPJ *</label>
+                <input
+                  value={formData.cnpj}
+                  onChange={(event) => updateField("cnpj", event.target.value)}
+                  placeholder="00.000.000/0001-00"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Seguimento *</label>
+                <input
+                  value={formData.seguimento}
+                  onChange={(event) => updateField("seguimento", event.target.value)}
+                  placeholder="Ex: Alimentício, automotivo, tecnologia"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">E-mail *</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(event) => updateField("email", event.target.value)}
+                  placeholder="contato@empresa.com.br"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-foreground block mb-1.5">Telefone *</label>
+                <input
+                  value={formData.telefone}
+                  onChange={(event) => updateField("telefone", event.target.value)}
+                  placeholder="(00) 00000-0000"
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
+                <input
+                  type="password"
+                  value={formData.senha}
+                  onChange={(event) => updateField("senha", event.target.value)}
+                  placeholder="Mín. 6 caracteres"
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Descrição</label>
+                <textarea
+                  value={formData.descricao}
+                  onChange={(event) => updateField("descricao", event.target.value)}
+                  placeholder="Descreva rapidamente a atuação da empresa"
+                  rows={4}
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium text-foreground block mb-1.5">Website</label>
+                <input
+                  value={formData.website}
+                  onChange={(event) => updateField("website", event.target.value)}
+                  placeholder="https://suaempresa.com.br"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-700">
+                {successMessage}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setScreen("busca")}
+                className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors"
+                type="button"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="flex-1 bg-primary hover:bg-blue-700 disabled:bg-muted disabled:text-muted-foreground text-white font-semibold py-3 rounded-xl transition-colors text-sm"
+                disabled={isSubmitting}
+                type="button"
+              >
+                {isSubmitting ? "Cadastrando..." : "Criar conta gratuita"}
               </button>
             </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Nome *</label>
-                  <input placeholder="Seu nome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Sobrenome *</label>
-                  <input placeholder="Seu sobrenome" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Cargo</label>
-                  <input placeholder="Ex: Gerente de Compras" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">E-mail corporativo *</label>
-                  <input type="email" placeholder="seu@empresa.com.br" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Telefone</label>
-                  <input placeholder="(00) 00000-0000" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Senha *</label>
-                  <input type="password" placeholder="Mín. 8 caracteres" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground block mb-1.5">Confirmar senha *</label>
-                  <input type="password" placeholder="Repita a senha" className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white" />
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
-                  Voltar
-                </button>
-                <button onClick={() => setStep(3)} className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm">
-                  Continuar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-5">
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Quais categorias de fornecedor você busca? (selecione todas que se aplicam)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Embalagens", "Metalurgia", "Polímeros", "Fixadores", "Logística", "Matéria-Prima", "Equipamentos", "Serviços Industriais", "TI / Software", "Limpeza"].map((cat) => (
-                    <CategoryChip key={cat} label={cat} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Regiões de interesse
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Sul", "Sudeste", "Centro-Oeste", "Nordeste", "Norte", "Todo o Brasil"].map((r) => (
-                    <CategoryChip key={r} label={r} />
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground block mb-2">
-                  Volume de compras mensal estimado
-                </label>
-                <select className="w-full border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-colors bg-white text-foreground">
-                  <option>Até R$ 10 mil</option>
-                  <option>R$ 10k – R$ 50k</option>
-                  <option>R$ 50k – R$ 200k</option>
-                  <option>Acima de R$ 200k</option>
-                </select>
-              </div>
-              <div className="flex items-start gap-2.5 p-3 bg-secondary border border-blue-100 rounded-xl">
-                <input type="checkbox" id="terms" className="mt-0.5 accent-primary" />
-                <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed cursor-pointer">
-                  Concordo com os <span className="text-primary font-semibold">Termos de Uso</span> e a{" "}
-                  <span className="text-primary font-semibold">Política de Privacidade</span> da SupplyNet.
-                </label>
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setStep(2)} className="flex-1 border border-border py-3 rounded-xl text-sm font-medium hover:bg-muted transition-colors">
-                  Voltar
-                </button>
-                <button
-                  onClick={() => setScreen("busca")}
-                  className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
-                >
-                  Criar conta gratuita
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </main>
