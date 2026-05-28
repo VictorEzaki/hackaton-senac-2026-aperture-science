@@ -31,6 +31,8 @@ import {
   buildSupplierCatalogParams,
   fetchSupplierCatalog,
   fetchSupplierOptions,
+  fetchSmartSupplierSearch,
+  type InterpretedFilters,
   type SupplierCatalogItem,
 } from "./services/supplierCatalog";
 
@@ -87,6 +89,7 @@ interface SupplierFromApi {
   estado?: string;
   avaliacao?: number;
   data_cadastro?: string;
+  matchScore?: number;
   Categoria?: {
     categoria?: string;
   };
@@ -192,7 +195,7 @@ const mapSupplierFromApi = (supplier: SupplierFromApi, index: number): Supplier 
     reviews: 0,
     verified: Boolean(certification && certification !== "Sem certificação"),
     esg: /iso 14001|fsc|esg|sustent/i.test(certification),
-    matchScore: Math.max(60, Math.min(100, Math.round((rating || 3.5) * 20))),
+    matchScore: supplier.matchScore ?? Math.max(60, Math.min(100, Math.round((rating || 3.5) * 20))),
     deliveryDays: attendance,
     priceRange: supplier.website || "Consulte condições",
     description: supplier.descricao || "Fornecedor cadastrado no Supply Hub.",
@@ -1760,9 +1763,19 @@ function CadastroFornecedorScreen({ setScreen }: { setScreen: (s: Screen) => voi
 
 // ─── Screen: Busca Inteligente ────────────────────────────────────────────────
 
-function BuscaScreen() {
+function BuscaScreen({
+  setActiveSupplier,
+  setScreen,
+}: {
+  setActiveSupplier: (supplier: Supplier) => void;
+  setScreen: (s: Screen) => void;
+}) {
   const [input, setInput] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
+  const [smartSuppliers, setSmartSuppliers] = useState<Supplier[]>([]);
+  const [interpretedFilters, setInterpretedFilters] = useState<InterpretedFilters | null>(null);
+  const [isSmartLoading, setIsSmartLoading] = useState(false);
+  const [smartError, setSmartError] = useState("");
   const suggestions = [
     "Embalagens sustentáveis em Santa Catarina",
     "Fornecedor de fixadores com entrega rápida",
@@ -1771,13 +1784,186 @@ function BuscaScreen() {
     "Fornecedor ESG de papelão ondulado",
   ];
 
-  const handleSearch = (q: string) => {
-    setSubmittedSearch(q);
+  const handleSearch = async (q: string) => {
+    const necessidade = q.trim();
+    if (!necessidade || isSmartLoading) return;
+
+    setSubmittedSearch(necessidade);
+    setSmartError("");
+    setSmartSuppliers([]);
+    setInterpretedFilters(null);
+    setIsSmartLoading(true);
+
+    try {
+      const data = await fetchSmartSupplierSearch(necessidade);
+      setInterpretedFilters(data.filtrosInterpretados);
+      setSmartSuppliers((data.data || []).map((supplier, index) => mapSupplierFromApi(supplier, index)));
+    } catch (err) {
+      setSmartError(err instanceof Error ? err.message : "Não foi possível realizar a busca inteligente.");
+    } finally {
+      setIsSmartLoading(false);
+    }
+  };
+
+  const openPerfil = (supplier: Supplier) => {
+    setActiveSupplier(supplier);
+    setScreen("perfil");
+  };
+
+  const filterLabels = interpretedFilters
+    ? [
+        interpretedFilters.categoria && `Categoria ${interpretedFilters.categoria}`,
+        interpretedFilters.qualificacao && `Qualificação ${interpretedFilters.qualificacao}`,
+        interpretedFilters.tipoProduto && `Produto/serviço ${interpretedFilters.tipoProduto}`,
+        interpretedFilters.avaliacaoMinima && `Avaliação mínima ${interpretedFilters.avaliacaoMinima}`,
+        interpretedFilters.estado && `Estado ${interpretedFilters.estado}`,
+        interpretedFilters.cidade && `Cidade ${interpretedFilters.cidade}`,
+      ].filter(Boolean)
+    : [];
+
+  const keywordLabels = interpretedFilters?.palavrasChave?.filter(Boolean) || [];
+
+  const SmartSupplierCard = ({ supplier, index }: { supplier: Supplier; index: number }) => (
+    <div className="bg-white border border-border rounded-xl p-5 hover:border-primary/30 hover:shadow-sm transition-all">
+      <div className="flex items-start gap-4">
+        <div className="relative flex-shrink-0">
+          <Avatar initials={supplier.initials} color={supplier.color} size="lg" />
+          {index === 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+              #1
+            </span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div>
+              <h3 className="font-semibold text-foreground">{supplier.name}</h3>
+              {supplier.razaoSocial && (
+                <p className="text-xs text-muted-foreground mt-0.5">{supplier.razaoSocial}</p>
+              )}
+            </div>
+            <div className="w-36 flex-shrink-0">
+              <MatchBar score={supplier.matchScore} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2 flex-wrap">
+            <span className="flex items-center gap-1">
+              <Package className="w-3.5 h-3.5" />
+              {supplier.subcategory}
+            </span>
+            <span className="flex items-center gap-1">
+              <BadgeCheck className="w-3.5 h-3.5" />
+              {supplier.certifications[0] || "Sem qualificação informada"}
+            </span>
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5" />
+              {supplier.location}, {supplier.state}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{supplier.description}</p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <StarRating rating={supplier.rating} count={supplier.reviews} />
+            <div className="flex items-center gap-2">
+              {(supplier.email || supplier.telefone) && (
+                <a
+                  href={supplier.email ? `mailto:${supplier.email}` : `tel:${supplier.telefone}`}
+                  onClick={(event) => event.stopPropagation()}
+                  className="px-3 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:border-primary/40 transition-colors"
+                >
+                  Contato
+                </a>
+              )}
+              <button
+                onClick={() => openPerfil(supplier)}
+                className="px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
+              >
+                Ver perfil
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const SmartResults = () => {
+    if (isSmartLoading) {
+      return (
+        <div className="max-w-5xl mx-auto px-6 pb-12">
+          <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+            <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">Interpretando necessidade e ranqueando fornecedores...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (smartError) {
+      return (
+        <div className="max-w-5xl mx-auto px-6 pb-12">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700 text-left">
+            <p className="font-semibold mb-2">Falha na busca inteligente</p>
+            <p className="mb-4">{smartError}</p>
+            <button
+              onClick={() => submittedSearch && handleSearch(submittedSearch)}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (!submittedSearch) return null;
+
+    return (
+      <div className="max-w-5xl mx-auto px-6 pb-12">
+        {interpretedFilters && (
+          <div className="bg-secondary border border-blue-100 rounded-xl p-4 text-left mb-5">
+            <p className="text-sm font-semibold text-foreground mb-2">
+              Entendemos que você procura
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[...filterLabels, ...keywordLabels.map((keyword) => `Palavra-chave ${keyword}`)].map((label) => (
+                <span key={label} className="text-xs font-medium text-primary bg-white border border-blue-100 rounded-full px-3 py-1">
+                  {label}
+                </span>
+              ))}
+              {filterLabels.length === 0 && keywordLabels.length === 0 && (
+                <span className="text-sm text-muted-foreground">
+                  Não identificamos filtros específicos, então buscamos fornecedores compatíveis pelo texto completo.
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {smartSuppliers.length === 0 ? (
+          <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground">
+            <Package className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">Nenhum fornecedor compatível encontrado</p>
+            <p className="text-sm mt-1">Tente descrever a necessidade com uma categoria, localização ou produto.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {smartSuppliers.length} fornecedores ranqueados por compatibilidade
+              </p>
+            </div>
+            {smartSuppliers.map((supplier, index) => (
+              <SmartSupplierCard key={supplier.id} supplier={supplier} index={index} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
     <main className="min-h-[calc(100vh-56px)] flex flex-col">
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-20 text-center">
+      <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight max-w-3xl mb-4">
           Encontre o fornecedor{" "}
           <span className="text-primary">ideal</span> para o seu negócio
@@ -1815,9 +2001,10 @@ function BuscaScreen() {
               </div>
               <button
                 onClick={() => input.trim() && handleSearch(input.trim())}
+                disabled={isSmartLoading}
                 className="bg-primary hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors flex items-center gap-2"
               >
-                <Search className="w-4 h-4" /> Buscar
+                <Search className="w-4 h-4" /> {isSmartLoading ? "Buscando..." : "Buscar"}
               </button>
             </div>
           </div>
@@ -1836,16 +2023,10 @@ function BuscaScreen() {
               </button>
             ))}
           </div>
-          {submittedSearch && (
-            <div className="mt-5 bg-secondary border border-blue-100 rounded-xl px-4 py-3 text-left">
-              <p className="text-sm font-semibold text-foreground">Busca inteligente registrada</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                "{submittedSearch}" será usada como briefing da sua demanda. Para explorar fornecedores cadastrados com filtros, acesse o Catálogo.
-              </p>
-            </div>
-          )}
         </div>
       </div>
+
+      <SmartResults />
 
       <div className="border-t border-border bg-white py-8">
         <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
@@ -2775,7 +2956,7 @@ export default function App() {
   const renderScreen = () => {
     switch (screen) {
       case "busca":
-        return <BuscaScreen />;
+        return <BuscaScreen setActiveSupplier={setActiveSupplier} setScreen={setScreen} />;
       case "resultados":
         return (
           <ResultadosScreen
