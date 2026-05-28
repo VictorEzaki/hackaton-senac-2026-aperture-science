@@ -26,6 +26,7 @@ export interface SupplierCatalogItem {
   telefone?: string;
   email?: string;
   data_cadastro?: string;
+  matchScore?: number;
 }
 
 export interface SupplierCatalogResponse {
@@ -43,6 +44,21 @@ export interface SupplierOptionsResponse {
   categorias?: string[];
   certificacoes?: string[];
   capacidades_atendimento?: string[];
+}
+
+export interface InterpretedFilters {
+  categoria: string | null;
+  qualificacao: string | null;
+  tipoProduto: string | null;
+  avaliacaoMinima: number | null;
+  estado: string | null;
+  cidade: string | null;
+  palavrasChave: string[];
+}
+
+export interface SmartSupplierSearchResponse {
+  filtrosInterpretados: InterpretedFilters;
+  data: SupplierCatalogItem[];
 }
 
 const appendParam = (params: URLSearchParams, key: string, value?: string | number) => {
@@ -88,4 +104,19 @@ export const fetchSupplierOptions = async () => {
   }
 
   return data as SupplierOptionsResponse;
+};
+
+export const fetchSmartSupplierSearch = async (necessidade: string) => {
+  const response = await fetch("/api/fornecedores/busca-inteligente", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ necessidade }),
+  });
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.erro || "Não foi possível realizar a busca inteligente.");
+  }
+
+  return data as SmartSupplierSearchResponse;
 };
